@@ -1,6 +1,7 @@
 import React from 'react';
 import { GameDifficulty } from '../types';
 import { Play, Volume2, VolumeX } from 'lucide-react';
+import { PWAInstallButton } from '../pwa/PWAInstallButton';
 
 interface TitleScreenProps {
   onStart: () => void;
@@ -29,13 +30,14 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
   return (
     <div className="absolute inset-0 z-20 flex flex-col justify-between p-8 sm:p-12 pointer-events-auto select-none bg-gradient-to-b from-black/60 via-transparent to-black/80">
       {/* Top Header: Audio & Status */}
-      <div className="flex items-center justify-between w-full">
+      <div className="flex flex-wrap items-center justify-between w-full gap-3">
         <div className="flex items-center gap-2 border border-white/20 bg-black/60 px-3 py-1 font-mono text-xs tracking-widest text-white/70">
           <span className="w-2 h-2 bg-cyan-400" />
           <span>CYBERNETIC VECTOR SIMULATION // 120 BPM</span>
         </div>
 
         <div className="flex items-center gap-3">
+          <PWAInstallButton />
           {bestTime !== null && (
             <div className="hidden sm:flex items-center gap-2 px-3 py-1 border border-white/20 bg-black/60 font-mono text-xs">
               <span className="text-white/40">BEST RECORD:</span>

@@ -13,6 +13,8 @@ import { HUDOverlay } from './game/ui/HUDOverlay';
 import { PauseModal } from './game/ui/PauseModal';
 import { VictoryModal } from './game/ui/VictoryModal';
 import { GameOverModal } from './game/ui/GameOverModal';
+import { useOnlineStatus } from './game/pwa/useOnlineStatus';
+import { WifiOff } from 'lucide-react';
 
 const INITIAL_STATS: PlayerStats = {
   health: 100,
@@ -65,6 +67,7 @@ export default function App() {
   });
 
   const [isNewBest, setIsNewBest] = useState(false);
+  const isOnline = useOnlineStatus();
 
   // Initialize Three.js scene once on mount
   useEffect(() => {
@@ -215,6 +218,14 @@ export default function App() {
       {/* Subtle Retro Scanline Overlay (pure pointer-events-none) */}
       {settings.showScanlines && (
         <div className="absolute inset-0 pointer-events-none crt-grid opacity-35 z-[1]" />
+      )}
+
+      {/* Offline Connectivity Indicator */}
+      {!isOnline && (
+        <div className="fixed top-4 right-4 z-50 flex items-center gap-2 px-3 py-1.5 bg-black/90 border border-amber-500/60 font-mono text-xs text-amber-400 shadow-[0_0_20px_rgba(245,158,11,0.25)]">
+          <WifiOff className="w-3.5 h-3.5" />
+          <span>OFFLINE MODE // RUNNING FROM LOCAL CACHE</span>
+        </div>
       )}
 
       {/* UI States */}

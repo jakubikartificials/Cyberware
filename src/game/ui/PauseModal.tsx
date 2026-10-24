@@ -1,6 +1,7 @@
 import React from 'react';
 import { GameSettings, PlayerStats } from '../types';
 import { Play, RotateCcw, Home, Volume2, VolumeX, Eye, Gauge } from 'lucide-react';
+import { PWAInstallButton } from '../pwa/PWAInstallButton';
 
 interface PauseModalProps {
   onResume: () => void;
@@ -91,6 +92,11 @@ export const PauseModal: React.FC<PauseModalProps> = ({
             </span>
             <span className="text-[10px] text-white/40">MENU</span>
           </button>
+        </div>
+
+        {/* Offline PWA Installation */}
+        <div className="flex justify-center border-t border-white/10 pt-2">
+          <PWAInstallButton />
         </div>
 
         {/* Quick Settings */}
