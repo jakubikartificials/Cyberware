@@ -1,0 +1,49 @@
+@import "tailwindcss";
+
+@layer base {
+  html, body, #root {
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+    background-color: #000000;
+    color: #ffffff;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+}
+
+/* Cyber wire text glow */
+.wire-glow-white {
+  text-shadow: 0 0 10px rgba(255, 255, 255, 0.7), 0 0 20px rgba(255, 255, 255, 0.4);
+}
+
+.wire-glow-cyan {
+  text-shadow: 0 0 10px rgba(0, 240, 255, 0.8), 0 0 25px rgba(0, 240, 255, 0.4);
+}
+
+.wire-glow-magenta {
+  text-shadow: 0 0 10px rgba(255, 0, 128, 0.8), 0 0 25px rgba(255, 0, 128, 0.4);
+}
+
+.wire-glow-amber {
+  text-shadow: 0 0 10px rgba(255, 170, 0, 0.8), 0 0 25px rgba(255, 170, 0, 0.4);
+}
+
+.wire-glow-emerald {
+  text-shadow: 0 0 10px rgba(0, 255, 150, 0.8), 0 0 25px rgba(0, 255, 150, 0.4);
+}
+
+/* Subtle CRT scanline overlay */
+.crt-grid {
+  background: linear-gradient(
+    rgba(18, 16, 16, 0) 50%, 
+    rgba(0, 0, 0, 0.25) 50%
+  ), linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0.02),
+    rgba(0, 0, 0, 0.02) 100%
+  );
+  background-size: 100% 3px, 6px 100%;
+}
