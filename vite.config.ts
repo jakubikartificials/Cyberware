@@ -6,6 +6,7 @@ import { VitePWA } from 'vite-plugin-pwa';
 
 export default defineConfig(() => {
   return {
+    base: './',
     plugins: [
       react(),
       tailwindcss(),
@@ -13,15 +14,15 @@ export default defineConfig(() => {
         registerType: 'autoUpdate',
         includeAssets: ['apple-touch-icon.png', 'icon.svg'],
         manifest: {
-          id: '/',
+          id: './',
           name: 'CYBERWIRE: Maze Runner 3D',
           short_name: 'CYBERWIRE',
           description: 'A rhythmic low-poly wireframe 3D FPS maze runner with neon checkpoints and dynamic synth mechanics.',
           theme_color: '#000000',
           background_color: '#000000',
           display: 'standalone',
-          start_url: '/',
-          scope: '/',
+          start_url: './',
+          scope: './',
           icons: [
             {
               src: '/pwa-192x192.png',
