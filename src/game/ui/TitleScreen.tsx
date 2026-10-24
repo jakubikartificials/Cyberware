@@ -131,6 +131,11 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
               </button>
             ))}
           </div>
+
+          {/* Secondary Offline Hub Trigger */}
+          <div className="flex items-center">
+            <PWAInstallButton />
+          </div>
         </div>
       </div>
 
