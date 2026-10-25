@@ -55,6 +55,8 @@ export default function App() {
   const [stats, setStats] = useState<PlayerStats>(INITIAL_STATS);
   const [settings, setSettings] = useState<GameSettings>(DEFAULT_SETTINGS);
   const [difficulty, setDifficulty] = useState<GameDifficulty>('standard');
+  const [runnerCount, setRunnerCount] = useState<number>(4);
+  const [cameraMode, setCameraMode] = useState<'first' | 'third'>('third');
   const [bannerNotification, setBannerNotification] = useState<string | null>(null);
   const bannerTimerRef = useRef<number | null>(null);
 
@@ -259,6 +261,18 @@ export default function App() {
     });
   };
 
+  const handleToggleCamera = () => {
+    if (wireSceneRef.current) {
+      const nextMode = wireSceneRef.current.toggleCameraView();
+      setCameraMode(nextMode);
+    }
+  };
+
+  const handleSetRunnerCount = (count: number) => {
+    setRunnerCount(count);
+    wireSceneRef.current?.setRunnerCount(count);
+  };
+
   return (
     <div
       className="relative w-screen h-screen overflow-hidden bg-black select-none"
@@ -293,6 +307,8 @@ export default function App() {
           onStart={handleStartGame}
           difficulty={difficulty}
           onSetDifficulty={handleSetDifficulty}
+          runnerCount={runnerCount}
+          onSetRunnerCount={handleSetRunnerCount}
           isMuted={settings.muted}
           onToggleMute={handleToggleMute}
           bestTime={bestTime}
@@ -318,6 +334,8 @@ export default function App() {
             isTouchControls={shouldShowTouch}
             isFullscreen={isFullscreen}
             onToggleFullscreen={handleToggleFullscreen}
+            cameraMode={cameraMode}
+            onToggleCamera={handleToggleCamera}
           />
 
           {shouldShowTouch && (
@@ -350,6 +368,8 @@ export default function App() {
               dashCharge={stats.dashCharge}
               isFullscreen={isFullscreen}
               onToggleFullscreen={handleToggleFullscreen}
+              cameraMode={cameraMode}
+              onToggleCamera={handleToggleCamera}
             />
           )}
         </>
@@ -367,6 +387,10 @@ export default function App() {
           stats={stats}
           isFullscreen={isFullscreen}
           onToggleFullscreen={handleToggleFullscreen}
+          cameraMode={cameraMode}
+          onToggleCamera={handleToggleCamera}
+          runnerCount={runnerCount}
+          onSetRunnerCount={handleSetRunnerCount}
         />
       )}
 

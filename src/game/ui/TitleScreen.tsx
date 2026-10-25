@@ -3,10 +3,14 @@ import { GameDifficulty } from '../types';
 import { Play, Volume2, VolumeX, Maximize, Minimize } from 'lucide-react';
 import { PWAInstallButton } from '../pwa/PWAInstallButton';
 
+import { Users, Bot, Camera } from 'lucide-react';
+
 interface TitleScreenProps {
   onStart: () => void;
   difficulty: GameDifficulty;
   onSetDifficulty: (diff: GameDifficulty) => void;
+  runnerCount: number;
+  onSetRunnerCount: (count: number) => void;
   isMuted: boolean;
   onToggleMute: () => void;
   bestTime: number | null;
@@ -18,6 +22,8 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
   onStart,
   difficulty,
   onSetDifficulty,
+  runnerCount,
+  onSetRunnerCount,
   isMuted,
   onToggleMute,
   bestTime,
@@ -115,8 +121,48 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
           </div>
         </div>
 
+        {/* Character Avatar & Bot Runners Selector */}
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 p-3 bg-black/80 border border-white/20 font-mono text-xs">
+          <div className="flex items-center gap-2 text-cyan-400 font-bold uppercase tracking-wider pr-2 border-r border-white/10">
+            <Bot className="w-4 h-4 text-orange-400" />
+            <span className="text-white">AVATAR:</span>
+            <span className="text-orange-400">CYBER CRAWLER SPIDER</span>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <span className="text-white/50 flex items-center gap-1">
+              <Users className="w-3.5 h-3.5 text-cyan-400" /> RUNNERS:
+            </span>
+            <div className="flex border border-white/20 bg-black/90">
+              {[
+                { count: 1, label: '1 SOLO' },
+                { count: 2, label: '2 DUO' },
+                { count: 4, label: '4 SQUAD' },
+                { count: 8, label: '8 SWARM' },
+              ].map((item) => (
+                <button
+                  key={item.count}
+                  onClick={() => onSetRunnerCount(item.count)}
+                  className={`px-2.5 py-1 text-[11px] font-bold uppercase transition-colors cursor-pointer ${
+                    runnerCount === item.count
+                      ? 'bg-orange-500 text-black shadow-[0_0_10px_#ff7700]'
+                      : 'text-white/60 hover:text-white hover:bg-white/10'
+                  }`}
+                >
+                  {item.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="hidden lg:flex items-center gap-1.5 text-white/40 text-[11px] ml-auto">
+            <Camera className="w-3.5 h-3.5 text-cyan-400" />
+            <span>[V] TOGGLE 1P / 3P VIEW</span>
+          </div>
+        </div>
+
         {/* Action Controls & Difficulty */}
-        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-4 pt-4">
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-4 pt-2">
           {/* Primary CTA */}
           <button
             onClick={onStart}
@@ -154,10 +200,10 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
       {/* Flat Control Hint Line */}
       <div className="border-t border-white/10 pt-4 flex flex-col sm:flex-row items-center justify-between font-mono text-xs text-white/50">
         <div className="tracking-wider">
-          WASD / Virtual Joystick Move · Space / Tap Jump · Shift / Tap Dash · Swipe Look
+          WASD Move · Space Jump · Shift Dash · [V] Camera · [F/Click] Pulse Hazard Spiders
         </div>
         <div className="tracking-widest uppercase text-white/30 text-[10px] mt-1 sm:mt-0">
-          MOBILE & DESKTOP MULTIPLATFORM // 60FPS THREE.JS
+          6-LEG PROCEDURAL KINEMATICS // MULTIPLATFORM THREE.JS
         </div>
       </div>
     </div>

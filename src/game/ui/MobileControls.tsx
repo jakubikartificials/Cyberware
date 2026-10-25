@@ -1,5 +1,5 @@
 import React, { useRef, useState, useEffect, useCallback } from 'react';
-import { ArrowUp, Zap, Crosshair, Pause, Maximize, Minimize } from 'lucide-react';
+import { ArrowUp, Zap, Crosshair, Pause, Maximize, Minimize, Camera } from 'lucide-react';
 
 interface MobileControlsProps {
   onMove: (analogX: number, analogZ: number) => void;
@@ -11,6 +11,8 @@ interface MobileControlsProps {
   dashCharge: number;
   isFullscreen?: boolean;
   onToggleFullscreen?: () => void;
+  cameraMode?: 'first' | 'third';
+  onToggleCamera?: () => void;
 }
 
 export const MobileControls: React.FC<MobileControlsProps> = ({
@@ -23,6 +25,8 @@ export const MobileControls: React.FC<MobileControlsProps> = ({
   dashCharge,
   isFullscreen = false,
   onToggleFullscreen,
+  cameraMode = 'third',
+  onToggleCamera,
 }) => {
   // Joystick state
   const joystickContainerRef = useRef<HTMLDivElement>(null);
@@ -165,7 +169,7 @@ export const MobileControls: React.FC<MobileControlsProps> = ({
 
   return (
     <div className="absolute inset-0 pointer-events-none select-none z-20 flex flex-col justify-between overflow-hidden">
-      {/* Top Touch Controls Header: Pause and Fullscreen Buttons for mobile users */}
+      {/* Top Touch Controls Header: Pause, Camera, and Fullscreen Buttons for mobile users */}
       <div className="flex items-center justify-between p-4 pointer-events-auto">
         <button
           onClick={onPause}
@@ -175,16 +179,28 @@ export const MobileControls: React.FC<MobileControlsProps> = ({
           <span>PAUSE</span>
         </button>
 
-        {onToggleFullscreen && (
-          <button
-            onClick={onToggleFullscreen}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-black/80 border border-white/30 text-white font-mono text-xs hover:border-cyan-400 hover:text-cyan-400 active:scale-95 transition-all cursor-pointer shadow-[0_0_10px_rgba(0,0,0,0.8)]"
-            title="Toggle Fullscreen"
-          >
-            {isFullscreen ? <Minimize className="w-3.5 h-3.5 text-cyan-400" /> : <Maximize className="w-3.5 h-3.5 text-cyan-400" />}
-            <span className="hidden sm:inline">{isFullscreen ? 'EXIT' : 'FULL'}</span>
-          </button>
-        )}
+        <div className="flex items-center gap-2">
+          {onToggleCamera && (
+            <button
+              onClick={onToggleCamera}
+              className="flex items-center gap-1 px-3 py-1.5 bg-black/80 border border-orange-500/70 text-orange-400 font-mono text-xs hover:border-orange-300 active:scale-95 transition-all cursor-pointer shadow-[0_0_10px_rgba(255,119,0,0.3)]"
+            >
+              <Camera className="w-3.5 h-3.5" />
+              <span>{cameraMode === 'third' ? '3P SPIDER' : '1P COCKPIT'}</span>
+            </button>
+          )}
+
+          {onToggleFullscreen && (
+            <button
+              onClick={onToggleFullscreen}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-black/80 border border-white/30 text-white font-mono text-xs hover:border-cyan-400 hover:text-cyan-400 active:scale-95 transition-all cursor-pointer shadow-[0_0_10px_rgba(0,0,0,0.8)]"
+              title="Toggle Fullscreen"
+            >
+              {isFullscreen ? <Minimize className="w-3.5 h-3.5 text-cyan-400" /> : <Maximize className="w-3.5 h-3.5 text-cyan-400" />}
+              <span className="hidden sm:inline">{isFullscreen ? 'EXIT' : 'FULL'}</span>
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Main Touch Interaction Zone */}

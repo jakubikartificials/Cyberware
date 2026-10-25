@@ -4,6 +4,7 @@ import { MazeBuilder, MazeData } from '../world/MazeBuilder';
 import { PlayerController } from '../physics/PlayerController';
 import { soundSynth } from '../audio/SoundSynth';
 import { GameSettings, PlayerStats, GameState } from '../types';
+import { CrawlerBotsManager } from '../entities/CrawlerBotsManager';
 
 export class WireScene {
   public renderer!: THREE.WebGLRenderer;
@@ -11,6 +12,8 @@ export class WireScene {
   public camera!: THREE.PerspectiveCamera;
   public mazeData!: MazeData;
   public player!: PlayerController;
+  public crawlerBotsManager!: CrawlerBotsManager;
+  public runnerCount: number = 4;
 
   private container: HTMLElement;
   private animFrameId: number = 0;
@@ -123,6 +126,12 @@ export class WireScene {
 
     this.player = new PlayerController(this.camera);
     this.player.setSpawnPosition([0, 0, 5], 0);
+    this.scene.add(this.player.crawler.group);
+
+    // Initialize Crawler Bots Manager (Bot Runners + Hazard Spiders)
+    this.crawlerBotsManager = new CrawlerBotsManager(this.scene);
+    this.crawlerBotsManager.initBots(this.runnerCount);
+    this.player.onCheckProjectileHit = (pos) => this.crawlerBotsManager.checkPulseHit(pos, this.stats);
 
     // Attach event callbacks
     this.player.onCheckpointActivated = (name, sector) => {
@@ -259,6 +268,11 @@ export class WireScene {
     if (key === 'KeyF') {
       this.player.firePulse(this.scene);
     }
+
+    // Camera view toggle (1st person cockpit vs 3rd person spider crawler view)
+    if (key === 'KeyV') {
+      this.toggleCameraView();
+    }
   };
 
   private onKeyUp = (e: KeyboardEvent): void => {
@@ -309,6 +323,7 @@ export class WireScene {
     this.stats.health = this.stats.maxHealth;
     this.stats.score = 0;
     this.stats.beatCombo = 0;
+    this.crawlerBotsManager?.initBots(this.runnerCount);
     this.onStateTransition?.('playing');
     this.requestPointerLock();
   }
@@ -360,9 +375,25 @@ export class WireScene {
     this.stats.checkpointName = this.mazeData.checkpoints[0].name;
 
     this.player.setSpawnPosition([0, 0, 5], 0);
+    this.crawlerBotsManager?.initBots(this.runnerCount);
     this.gameState = 'playing';
     this.onStateTransition?.('playing');
     this.requestPointerLock();
+  }
+
+  public toggleCameraView(): 'first' | 'third' {
+    return this.player.toggleCameraMode();
+  }
+
+  public getCameraView(): 'first' | 'third' {
+    return this.player.cameraMode;
+  }
+
+  public setRunnerCount(count: number): void {
+    this.runnerCount = count;
+    if (this.crawlerBotsManager) {
+      this.crawlerBotsManager.initBots(count);
+    }
   }
 
   private startLoop(): void {
@@ -409,6 +440,26 @@ export class WireScene {
         this.stats,
         this.scene
       );
+
+      // Update bot runners and hazard crawlers
+      if (this.crawlerBotsManager) {
+        this.crawlerBotsManager.update(
+          dt,
+          this.player.position,
+          this.mazeData,
+          this.stats,
+          (amount) => {
+            this.stats.health = Math.max(0, this.stats.health - amount);
+            this.stats.beatCombo = 0;
+            if (this.stats.health <= 0) {
+              this.gameState = 'gameover';
+              this.onStateTransition?.('gameover');
+            } else {
+              this.onStatsUpdate?.({ ...this.stats });
+            }
+          }
+        );
+      }
 
       this.onStatsUpdate?.({ ...this.stats });
     }

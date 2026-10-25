@@ -1,6 +1,6 @@
 import React from 'react';
 import { GameSettings, PlayerStats } from '../types';
-import { Play, RotateCcw, Home, Volume2, VolumeX, Eye, Gauge, Smartphone, Maximize, Minimize } from 'lucide-react';
+import { Play, RotateCcw, Home, Volume2, VolumeX, Eye, Gauge, Smartphone, Maximize, Minimize, Camera, Users } from 'lucide-react';
 import { PWAInstallButton } from '../pwa/PWAInstallButton';
 
 interface PauseModalProps {
@@ -14,6 +14,10 @@ interface PauseModalProps {
   stats: PlayerStats;
   isFullscreen?: boolean;
   onToggleFullscreen?: () => void;
+  cameraMode?: 'first' | 'third';
+  onToggleCamera?: () => void;
+  runnerCount?: number;
+  onSetRunnerCount?: (count: number) => void;
 }
 
 export const PauseModal: React.FC<PauseModalProps> = ({
@@ -27,6 +31,10 @@ export const PauseModal: React.FC<PauseModalProps> = ({
   stats,
   isFullscreen = false,
   onToggleFullscreen,
+  cameraMode = 'third',
+  onToggleCamera,
+  runnerCount = 4,
+  onSetRunnerCount,
 }) => {
   return (
     <div className="absolute inset-0 z-30 flex items-center justify-center p-6 bg-black/85 select-none pointer-events-auto">
@@ -106,6 +114,50 @@ export const PauseModal: React.FC<PauseModalProps> = ({
         {/* Quick Settings */}
         <div className="border-t border-white/20 pt-4 flex flex-col gap-3 font-mono text-xs">
           <div className="text-[10px] tracking-widest text-white/50 uppercase">CONFIGURATIONS</div>
+
+          {/* Camera View Mode */}
+          {onToggleCamera && (
+            <div className="flex items-center justify-between">
+              <span className="flex items-center gap-2 text-white/70">
+                <Camera className="w-3.5 h-3.5 text-orange-400" /> CAMERA VIEW [V]
+              </span>
+              <button
+                onClick={onToggleCamera}
+                className="px-3 py-1 border border-orange-400/60 bg-black text-xs text-orange-400 font-bold hover:border-orange-300 hover:text-white transition-colors cursor-pointer"
+              >
+                {cameraMode === 'third' ? '3P SPIDER CRAWLER' : '1P COCKPIT'}
+              </button>
+            </div>
+          )}
+
+          {/* Competitor Runners Count */}
+          {onSetRunnerCount && (
+            <div className="flex items-center justify-between">
+              <span className="flex items-center gap-2 text-white/70">
+                <Users className="w-3.5 h-3.5 text-cyan-400" /> RUNNER BOTS
+              </span>
+              <div className="flex border border-white/20 bg-black text-[10px]">
+                {[
+                  { count: 1, label: '1 SOLO' },
+                  { count: 2, label: '2 DUO' },
+                  { count: 4, label: '4 SQUAD' },
+                  { count: 8, label: '8 SWARM' },
+                ].map((item) => (
+                  <button
+                    key={item.count}
+                    onClick={() => onSetRunnerCount(item.count)}
+                    className={`px-2 py-0.5 uppercase cursor-pointer ${
+                      runnerCount === item.count
+                        ? 'bg-orange-500 text-black font-bold'
+                        : 'text-white/60 hover:text-white'
+                    }`}
+                  >
+                    {item.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* Mouse Sensitivity */}
           <div className="flex items-center justify-between">

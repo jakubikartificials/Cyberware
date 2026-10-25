@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { BoundingBox3D, MazeData } from '../world/MazeBuilder';
 import { soundSynth } from '../audio/SoundSynth';
 import { GameSettings, PlayerStats } from '../types';
+import { CyberCrawler } from '../entities/CyberCrawler';
 
 export interface PulseProjectile {
   position: THREE.Vector3;
@@ -15,6 +16,10 @@ export class PlayerController {
   public camera: THREE.PerspectiveCamera;
   public position: THREE.Vector3 = new THREE.Vector3(0, 2, 5);
   public velocity: THREE.Vector3 = new THREE.Vector3();
+
+  // Character Cyber Crawler Avatar & Camera Mode
+  public crawler: CyberCrawler = new CyberCrawler(0x00f0ff, true);
+  public cameraMode: 'first' | 'third' = 'third';
 
   // Rotation angles
   public yaw: number = 0;
@@ -63,6 +68,7 @@ export class PlayerController {
   public onCubeCollected?: (cubeId: string) => void;
   public onDamageTaken?: (amount: number) => void;
   public onBeatComboChanged?: (combo: number) => void;
+  public onCheckProjectileHit?: (pos: THREE.Vector3) => boolean;
 
   constructor(camera: THREE.PerspectiveCamera) {
     this.camera = camera;
@@ -505,6 +511,11 @@ export class PlayerController {
         }
       }
 
+      // Check hit with hazard crawler bots
+      if (!hit && this.onCheckProjectileHit && this.onCheckProjectileHit(proj.position)) {
+        hit = true;
+      }
+
       if (hit || proj.life >= proj.maxLife) {
         scene.remove(proj.mesh);
         this.projectiles.splice(i, 1);
@@ -518,21 +529,46 @@ export class PlayerController {
     this.camera.fov = this.currentFov;
     this.camera.updateProjectionMatrix();
 
+    // Update Player's Cyber Crawler avatar model
+    const horizSpeed = Math.sqrt(this.velocity.x * this.velocity.x + this.velocity.z * this.velocity.z);
+    this.crawler.setPositionAndRotation(this.position, this.yaw);
+    this.crawler.update(dt, horizSpeed, this.isGrounded);
+
     // Camera positioning with head bob & shake
     const bobOffset = Math.sin(this.headBobTimer * 2) * (isMoving && this.isGrounded ? 0.05 : 0);
     const shakeX = (Math.random() * 2 - 1) * this.cameraShakeIntensity * 0.15;
     const shakeY = (Math.random() * 2 - 1) * this.cameraShakeIntensity * 0.15;
 
-    this.camera.position.set(
-      this.position.x + shakeX,
-      this.position.y - this.landSquash + bobOffset + shakeY,
-      this.position.z
-    );
+    if (this.cameraMode === 'third') {
+      // Third-person chase camera behind cyber crawler
+      const dist = 3.8;
+      const camX = this.position.x + Math.sin(this.yaw) * dist + shakeX;
+      const camZ = this.position.z + Math.cos(this.yaw) * dist;
+      const camY = this.position.y + 1.8 + shakeY;
 
-    this.camera.rotation.set(this.pitch, this.yaw, 0);
+      this.camera.position.set(camX, camY, camZ);
+      this.camera.lookAt(
+        this.position.x,
+        this.position.y + 0.9 - Math.tan(this.pitch) * 2.8,
+        this.position.z
+      );
+    } else {
+      // First-person cockpit view
+      this.camera.position.set(
+        this.position.x + shakeX,
+        this.position.y - this.landSquash + bobOffset + shakeY,
+        this.position.z
+      );
+      this.camera.rotation.set(this.pitch, this.yaw, 0);
+    }
 
     // Dynamic stats update
     stats.dashCharge = Math.min(stats.maxDashCharge, stats.maxDashCharge * (1 - Math.max(0, this.dashCooldownTimer) / 1.1));
+  }
+
+  public toggleCameraMode(): 'first' | 'third' {
+    this.cameraMode = this.cameraMode === 'first' ? 'third' : 'first';
+    return this.cameraMode;
   }
 
   // Check collision with static and dynamic colliders

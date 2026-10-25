@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { PlayerStats, GameSettings } from '../types';
 import { soundSynth } from '../audio/SoundSynth';
-import { Volume2, VolumeX, Crosshair, Zap, Shield, Sparkles, Maximize, Minimize } from 'lucide-react';
+import { Volume2, VolumeX, Crosshair, Zap, Shield, Sparkles, Maximize, Minimize, Camera } from 'lucide-react';
 
 interface HUDOverlayProps {
   stats: PlayerStats;
@@ -12,6 +12,8 @@ interface HUDOverlayProps {
   isTouchControls?: boolean;
   isFullscreen?: boolean;
   onToggleFullscreen?: () => void;
+  cameraMode?: 'first' | 'third';
+  onToggleCamera?: () => void;
 }
 
 export const HUDOverlay: React.FC<HUDOverlayProps> = ({
@@ -22,6 +24,8 @@ export const HUDOverlay: React.FC<HUDOverlayProps> = ({
   isTouchControls = false,
   isFullscreen = false,
   onToggleFullscreen,
+  cameraMode = 'third',
+  onToggleCamera,
 }) => {
   // Local state for smooth beat indicator
   const [beatPhase, setBeatPhase] = useState(0);
@@ -244,7 +248,7 @@ export const HUDOverlay: React.FC<HUDOverlayProps> = ({
 
         {isTouchControls && <div />}
 
-        {/* Bottom Right: Audio Mute & Controls Reminder */}
+        {/* Bottom Right: Audio Mute, Camera Mode, Fullscreen & Controls Reminder */}
         <div className="flex items-center gap-3 pointer-events-auto">
           <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 bg-black/70 border border-white/10 text-[11px] font-mono text-white/50">
             <span>[WASD] MOVE</span>
@@ -253,10 +257,24 @@ export const HUDOverlay: React.FC<HUDOverlayProps> = ({
             <span>•</span>
             <span>[SHIFT] DASH</span>
             <span>•</span>
+            <span>[V] CAM ({cameraMode === 'third' ? '3P SPIDER' : '1P COCKPIT'})</span>
+            <span>•</span>
             <span>[CLICK] PULSE</span>
             <span>•</span>
             <span>[ESC] PAUSE</span>
           </div>
+
+          {/* Camera View Mode button */}
+          {onToggleCamera && (
+            <button
+              onClick={onToggleCamera}
+              className="flex items-center gap-1.5 px-2.5 h-9 bg-black/80 border border-orange-400/60 text-orange-400 font-mono text-xs hover:border-orange-300 hover:text-white transition-colors cursor-pointer shadow-[0_0_10px_rgba(255,119,0,0.2)]"
+              title="Toggle Camera View [V]"
+            >
+              <Camera className="w-3.5 h-3.5" />
+              <span>{cameraMode === 'third' ? '3P SPIDER' : '1P COCKPIT'}</span>
+            </button>
+          )}
 
           {/* Fullscreen button */}
           {onToggleFullscreen && (
