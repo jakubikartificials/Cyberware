@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { PlayerStats, GameSettings } from '../types';
 import { soundSynth } from '../audio/SoundSynth';
-import { Volume2, VolumeX, Crosshair, Zap, Shield, Sparkles } from 'lucide-react';
+import { Volume2, VolumeX, Crosshair, Zap, Shield, Sparkles, Maximize, Minimize } from 'lucide-react';
 
 interface HUDOverlayProps {
   stats: PlayerStats;
@@ -10,6 +10,8 @@ interface HUDOverlayProps {
   onPause: () => void;
   bannerNotification: string | null;
   isTouchControls?: boolean;
+  isFullscreen?: boolean;
+  onToggleFullscreen?: () => void;
 }
 
 export const HUDOverlay: React.FC<HUDOverlayProps> = ({
@@ -18,6 +20,8 @@ export const HUDOverlay: React.FC<HUDOverlayProps> = ({
   onToggleMute,
   bannerNotification,
   isTouchControls = false,
+  isFullscreen = false,
+  onToggleFullscreen,
 }) => {
   // Local state for smooth beat indicator
   const [beatPhase, setBeatPhase] = useState(0);
@@ -253,6 +257,17 @@ export const HUDOverlay: React.FC<HUDOverlayProps> = ({
             <span>•</span>
             <span>[ESC] PAUSE</span>
           </div>
+
+          {/* Fullscreen button */}
+          {onToggleFullscreen && (
+            <button
+              onClick={onToggleFullscreen}
+              className="flex items-center justify-center w-9 h-9 bg-black/80 border border-white/30 text-white/80 hover:text-white hover:border-cyan-400 transition-colors cursor-pointer"
+              title="Toggle Fullscreen"
+            >
+              {isFullscreen ? <Minimize className="w-4 h-4 text-cyan-400" /> : <Maximize className="w-4 h-4 text-cyan-400" />}
+            </button>
+          )}
 
           {/* Mute button */}
           <button

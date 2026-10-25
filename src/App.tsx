@@ -81,6 +81,53 @@ export default function App() {
     settings.touchControls === 'on' ||
     (settings.touchControls === 'auto' && isTouchDevice);
 
+  // Fullscreen state tracking
+  const [isFullscreen, setIsFullscreen] = useState(false);
+
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      const doc = document as unknown as {
+        fullscreenElement?: Element;
+        webkitFullscreenElement?: Element;
+      };
+      setIsFullscreen(Boolean(doc.fullscreenElement || doc.webkitFullscreenElement));
+    };
+
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    document.addEventListener('webkitfullscreenchange', handleFullscreenChange);
+    return () => {
+      document.removeEventListener('fullscreenchange', handleFullscreenChange);
+      document.removeEventListener('webkitfullscreenchange', handleFullscreenChange);
+    };
+  }, []);
+
+  const handleToggleFullscreen = () => {
+    const doc = document as unknown as {
+      fullscreenElement?: Element;
+      webkitFullscreenElement?: Element;
+      exitFullscreen?: () => Promise<void>;
+      webkitExitFullscreen?: () => Promise<void>;
+    };
+    const elem = document.documentElement as unknown as {
+      requestFullscreen?: () => Promise<void>;
+      webkitRequestFullscreen?: () => Promise<void>;
+    };
+
+    if (!doc.fullscreenElement && !doc.webkitFullscreenElement) {
+      if (elem.requestFullscreen) {
+        elem.requestFullscreen().catch(() => {});
+      } else if (elem.webkitRequestFullscreen) {
+        elem.webkitRequestFullscreen().catch(() => {});
+      }
+    } else {
+      if (doc.exitFullscreen) {
+        doc.exitFullscreen().catch(() => {});
+      } else if (doc.webkitExitFullscreen) {
+        doc.webkitExitFullscreen().catch(() => {});
+      }
+    }
+  };
+
   // Initialize Three.js scene once on mount
   useEffect(() => {
     if (!canvasMountRef.current) return;
@@ -249,6 +296,8 @@ export default function App() {
           isMuted={settings.muted}
           onToggleMute={handleToggleMute}
           bestTime={bestTime}
+          isFullscreen={isFullscreen}
+          onToggleFullscreen={handleToggleFullscreen}
         />
       )}
 
@@ -267,6 +316,8 @@ export default function App() {
             }}
             bannerNotification={bannerNotification}
             isTouchControls={shouldShowTouch}
+            isFullscreen={isFullscreen}
+            onToggleFullscreen={handleToggleFullscreen}
           />
 
           {shouldShowTouch && (
@@ -297,6 +348,8 @@ export default function App() {
                 }
               }}
               dashCharge={stats.dashCharge}
+              isFullscreen={isFullscreen}
+              onToggleFullscreen={handleToggleFullscreen}
             />
           )}
         </>
@@ -312,6 +365,8 @@ export default function App() {
           settings={settings}
           onUpdateSettings={handleUpdateSettings}
           stats={stats}
+          isFullscreen={isFullscreen}
+          onToggleFullscreen={handleToggleFullscreen}
         />
       )}
 

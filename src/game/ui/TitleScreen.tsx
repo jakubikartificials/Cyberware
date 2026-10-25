@@ -1,6 +1,6 @@
 import React from 'react';
 import { GameDifficulty } from '../types';
-import { Play, Volume2, VolumeX } from 'lucide-react';
+import { Play, Volume2, VolumeX, Maximize, Minimize } from 'lucide-react';
 import { PWAInstallButton } from '../pwa/PWAInstallButton';
 
 interface TitleScreenProps {
@@ -10,6 +10,8 @@ interface TitleScreenProps {
   isMuted: boolean;
   onToggleMute: () => void;
   bestTime: number | null;
+  isFullscreen: boolean;
+  onToggleFullscreen: () => void;
 }
 
 export const TitleScreen: React.FC<TitleScreenProps> = ({
@@ -19,6 +21,8 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
   isMuted,
   onToggleMute,
   bestTime,
+  isFullscreen,
+  onToggleFullscreen,
 }) => {
   const formatTime = (secs: number) => {
     const m = Math.floor(secs / 60);
@@ -36,7 +40,7 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
           <span>CYBERNETIC VECTOR SIMULATION // 120 BPM</span>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2.5">
           <PWAInstallButton />
           {bestTime !== null && (
             <div className="hidden sm:flex items-center gap-2 px-3 py-1 border border-white/20 bg-black/60 font-mono text-xs">
@@ -44,6 +48,14 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
               <span className="text-emerald-400 font-bold tabular-nums">{formatTime(bestTime)}</span>
             </div>
           )}
+          <button
+            onClick={onToggleFullscreen}
+            className="flex items-center gap-1.5 px-3 py-1 border border-white/30 bg-black/70 font-mono text-xs text-white/80 hover:text-white hover:border-cyan-400 transition-colors cursor-pointer"
+            title="Toggle Fullscreen"
+          >
+            {isFullscreen ? <Minimize className="w-3.5 h-3.5 text-cyan-400" /> : <Maximize className="w-3.5 h-3.5 text-cyan-400" />}
+            <span>{isFullscreen ? 'WINDOWED' : 'FULLSCREEN'}</span>
+          </button>
           <button
             onClick={onToggleMute}
             className="flex items-center gap-2 px-3 py-1 border border-white/30 bg-black/70 font-mono text-xs text-white/80 hover:text-white hover:border-white transition-colors cursor-pointer"

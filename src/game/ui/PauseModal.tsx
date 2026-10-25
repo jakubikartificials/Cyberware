@@ -1,6 +1,6 @@
 import React from 'react';
 import { GameSettings, PlayerStats } from '../types';
-import { Play, RotateCcw, Home, Volume2, VolumeX, Eye, Gauge, Smartphone } from 'lucide-react';
+import { Play, RotateCcw, Home, Volume2, VolumeX, Eye, Gauge, Smartphone, Maximize, Minimize } from 'lucide-react';
 import { PWAInstallButton } from '../pwa/PWAInstallButton';
 
 interface PauseModalProps {
@@ -12,6 +12,8 @@ interface PauseModalProps {
   settings: GameSettings;
   onUpdateSettings: (newSettings: Partial<GameSettings>) => void;
   stats: PlayerStats;
+  isFullscreen?: boolean;
+  onToggleFullscreen?: () => void;
 }
 
 export const PauseModal: React.FC<PauseModalProps> = ({
@@ -23,6 +25,8 @@ export const PauseModal: React.FC<PauseModalProps> = ({
   settings,
   onUpdateSettings,
   stats,
+  isFullscreen = false,
+  onToggleFullscreen,
 }) => {
   return (
     <div className="absolute inset-0 z-30 flex items-center justify-center p-6 bg-black/85 select-none pointer-events-auto">
@@ -156,6 +160,22 @@ export const PauseModal: React.FC<PauseModalProps> = ({
               ))}
             </div>
           </div>
+
+          {/* Fullscreen Toggle */}
+          {onToggleFullscreen && (
+            <div className="flex items-center justify-between">
+              <span className="flex items-center gap-2 text-white/70">
+                {isFullscreen ? <Minimize className="w-3.5 h-3.5 text-cyan-400" /> : <Maximize className="w-3.5 h-3.5 text-cyan-400" />}
+                DISPLAY MODE
+              </span>
+              <button
+                onClick={onToggleFullscreen}
+                className="px-3 py-1 border border-white/20 hover:border-cyan-400 text-xs text-cyan-400 cursor-pointer"
+              >
+                {isFullscreen ? 'EXIT FULLSCREEN' : 'GO FULLSCREEN'}
+              </button>
+            </div>
+          )}
 
           {/* Audio Mute */}
           <div className="flex items-center justify-between pt-1">

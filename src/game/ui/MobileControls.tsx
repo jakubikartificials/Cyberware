@@ -1,5 +1,5 @@
 import React, { useRef, useState, useEffect, useCallback } from 'react';
-import { ArrowUp, Zap, Crosshair, Pause } from 'lucide-react';
+import { ArrowUp, Zap, Crosshair, Pause, Maximize, Minimize } from 'lucide-react';
 
 interface MobileControlsProps {
   onMove: (analogX: number, analogZ: number) => void;
@@ -9,6 +9,8 @@ interface MobileControlsProps {
   onPulse: () => void;
   onPause: () => void;
   dashCharge: number;
+  isFullscreen?: boolean;
+  onToggleFullscreen?: () => void;
 }
 
 export const MobileControls: React.FC<MobileControlsProps> = ({
@@ -19,6 +21,8 @@ export const MobileControls: React.FC<MobileControlsProps> = ({
   onPulse,
   onPause,
   dashCharge,
+  isFullscreen = false,
+  onToggleFullscreen,
 }) => {
   // Joystick state
   const joystickContainerRef = useRef<HTMLDivElement>(null);
@@ -161,7 +165,7 @@ export const MobileControls: React.FC<MobileControlsProps> = ({
 
   return (
     <div className="absolute inset-0 pointer-events-none select-none z-20 flex flex-col justify-between overflow-hidden">
-      {/* Top Touch Controls Header: Pause Button for mobile users */}
+      {/* Top Touch Controls Header: Pause and Fullscreen Buttons for mobile users */}
       <div className="flex items-center justify-between p-4 pointer-events-auto">
         <button
           onClick={onPause}
@@ -170,6 +174,17 @@ export const MobileControls: React.FC<MobileControlsProps> = ({
           <Pause className="w-3.5 h-3.5" />
           <span>PAUSE</span>
         </button>
+
+        {onToggleFullscreen && (
+          <button
+            onClick={onToggleFullscreen}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-black/80 border border-white/30 text-white font-mono text-xs hover:border-cyan-400 hover:text-cyan-400 active:scale-95 transition-all cursor-pointer shadow-[0_0_10px_rgba(0,0,0,0.8)]"
+            title="Toggle Fullscreen"
+          >
+            {isFullscreen ? <Minimize className="w-3.5 h-3.5 text-cyan-400" /> : <Maximize className="w-3.5 h-3.5 text-cyan-400" />}
+            <span className="hidden sm:inline">{isFullscreen ? 'EXIT' : 'FULL'}</span>
+          </button>
+        )}
       </div>
 
       {/* Main Touch Interaction Zone */}
