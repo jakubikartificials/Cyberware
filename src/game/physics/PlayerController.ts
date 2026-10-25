@@ -168,7 +168,7 @@ export class PlayerController {
 
   public update(
     dt: number,
-    heldInputs: { forward: boolean; backward: boolean; left: boolean; right: boolean },
+    heldInputs: { forward: boolean; backward: boolean; left: boolean; right: boolean; analogX?: number; analogZ?: number },
     mazeData: MazeData,
     settings: GameSettings,
     stats: PlayerStats,
@@ -225,15 +225,24 @@ export class PlayerController {
       }
     }
 
-    // 4. Directional movement input
+    // 4. Directional movement input (combining analog joystick or keyboard)
     this._forward.set(-Math.sin(this.yaw), 0, -Math.cos(this.yaw)).normalize();
     this._right.set(Math.cos(this.yaw), 0, -Math.sin(this.yaw)).normalize();
 
     this._moveDir.set(0, 0, 0);
-    if (heldInputs.forward) this._moveDir.add(this._forward);
-    if (heldInputs.backward) this._moveDir.sub(this._forward);
-    if (heldInputs.right) this._moveDir.add(this._right);
-    if (heldInputs.left) this._moveDir.sub(this._right);
+
+    const hasAnalog = heldInputs.analogX !== undefined && heldInputs.analogZ !== undefined &&
+      (Math.abs(heldInputs.analogX) > 0.05 || Math.abs(heldInputs.analogZ) > 0.05);
+
+    if (hasAnalog) {
+      this._moveDir.addScaledVector(this._right, heldInputs.analogX!);
+      this._moveDir.addScaledVector(this._forward, -heldInputs.analogZ!);
+    } else {
+      if (heldInputs.forward) this._moveDir.add(this._forward);
+      if (heldInputs.backward) this._moveDir.sub(this._forward);
+      if (heldInputs.right) this._moveDir.add(this._right);
+      if (heldInputs.left) this._moveDir.sub(this._right);
+    }
 
     const isMoving = this._moveDir.lengthSq() > 0.001;
     if (isMoving) {

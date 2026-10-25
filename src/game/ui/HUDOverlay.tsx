@@ -9,6 +9,7 @@ interface HUDOverlayProps {
   onToggleMute: () => void;
   onPause: () => void;
   bannerNotification: string | null;
+  isTouchControls?: boolean;
 }
 
 export const HUDOverlay: React.FC<HUDOverlayProps> = ({
@@ -16,6 +17,7 @@ export const HUDOverlay: React.FC<HUDOverlayProps> = ({
   settings,
   onToggleMute,
   bannerNotification,
+  isTouchControls = false,
 }) => {
   // Local state for smooth beat indicator
   const [beatPhase, setBeatPhase] = useState(0);
@@ -62,6 +64,24 @@ export const HUDOverlay: React.FC<HUDOverlayProps> = ({
               0{stats.currentSector} / 04
             </span>
           </div>
+
+          {/* Compact Mobile Gauges */}
+          {isTouchControls && (
+            <div className="flex flex-col gap-1 mt-1">
+              <div className="flex items-center gap-2 px-2 py-0.5 bg-black/80 border border-cyan-400/40 text-[10px] font-mono">
+                <Shield className="w-2.5 h-2.5 text-cyan-400" />
+                <span className="text-white/60">INTEGRITY:</span>
+                <span className="text-cyan-400 font-bold">{Math.round(stats.health)}%</span>
+              </div>
+              <div className="flex items-center gap-2 px-2 py-0.5 bg-black/80 border border-amber-400/40 text-[10px] font-mono">
+                <Zap className="w-2.5 h-2.5 text-amber-400" />
+                <span className="text-white/60">DASH:</span>
+                <span className="text-amber-400 font-bold">
+                  {stats.dashCharge >= 95 ? 'READY' : `${Math.round(stats.dashCharge)}%`}
+                </span>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Top Center: 120 BPM Rhythmic Pulse Metronome & Beat Streak */}
@@ -169,52 +189,56 @@ export const HUDOverlay: React.FC<HUDOverlayProps> = ({
 
       {/* Bottom Bar Status Clusters */}
       <div className="flex items-end justify-between w-full">
-        {/* Bottom Left: Integrity (Health) & Dash Charge */}
-        <div className="flex flex-col gap-2 pointer-events-auto">
-          {/* Integrity Bar */}
-          <div className="flex flex-col gap-1 p-2 bg-black/75 border border-white/20 min-w-[200px]">
-            <div className="flex items-center justify-between text-[10px] font-mono tracking-wider">
-              <span className="flex items-center gap-1 text-white/60">
-                <Shield className="w-3 h-3 text-cyan-400" /> INTEGRITY
-              </span>
-              <span className="font-bold text-white tabular-nums">
-                {Math.round(stats.health)}%
-              </span>
+        {/* Bottom Left: Integrity (Health) & Dash Charge (Desktop only) */}
+        {!isTouchControls && (
+          <div className="flex flex-col gap-2 pointer-events-auto">
+            {/* Integrity Bar */}
+            <div className="flex flex-col gap-1 p-2 bg-black/75 border border-white/20 min-w-[200px]">
+              <div className="flex items-center justify-between text-[10px] font-mono tracking-wider">
+                <span className="flex items-center gap-1 text-white/60">
+                  <Shield className="w-3 h-3 text-cyan-400" /> INTEGRITY
+                </span>
+                <span className="font-bold text-white tabular-nums">
+                  {Math.round(stats.health)}%
+                </span>
+              </div>
+              <div className="w-full h-1.5 bg-white/10 overflow-hidden">
+                <div
+                  className="h-full transition-all duration-150"
+                  style={{
+                    width: `${(stats.health / stats.maxHealth) * 100}%`,
+                    backgroundColor: stats.health > 40 ? '#00f0ff' : '#ff0055',
+                    boxShadow: stats.health > 40 ? '0 0 8px #00f0ff' : '0 0 8px #ff0055',
+                  }}
+                />
+              </div>
             </div>
-            <div className="w-full h-1.5 bg-white/10 overflow-hidden">
-              <div
-                className="h-full transition-all duration-150"
-                style={{
-                  width: `${(stats.health / stats.maxHealth) * 100}%`,
-                  backgroundColor: stats.health > 40 ? '#00f0ff' : '#ff0055',
-                  boxShadow: stats.health > 40 ? '0 0 8px #00f0ff' : '0 0 8px #ff0055',
-                }}
-              />
-            </div>
-          </div>
 
-          {/* Dash Capacitor */}
-          <div className="flex flex-col gap-1 p-2 bg-black/75 border border-white/20 min-w-[200px]">
-            <div className="flex items-center justify-between text-[10px] font-mono tracking-wider">
-              <span className="flex items-center gap-1 text-white/60">
-                <Zap className="w-3 h-3 text-amber-400" /> DASH CAPACITOR [SHIFT]
-              </span>
-              <span className="font-bold text-white tabular-nums">
-                {stats.dashCharge >= 95 ? 'READY' : `${Math.round(stats.dashCharge)}%`}
-              </span>
-            </div>
-            <div className="w-full h-1.5 bg-white/10 overflow-hidden">
-              <div
-                className="h-full transition-all duration-100"
-                style={{
-                  width: `${(stats.dashCharge / stats.maxDashCharge) * 100}%`,
-                  backgroundColor: stats.dashCharge >= 95 ? '#ffaa00' : 'rgba(255, 170, 0, 0.4)',
-                  boxShadow: stats.dashCharge >= 95 ? '0 0 8px #ffaa00' : 'none',
-                }}
-              />
+            {/* Dash Capacitor */}
+            <div className="flex flex-col gap-1 p-2 bg-black/75 border border-white/20 min-w-[200px]">
+              <div className="flex items-center justify-between text-[10px] font-mono tracking-wider">
+                <span className="flex items-center gap-1 text-white/60">
+                  <Zap className="w-3 h-3 text-amber-400" /> DASH CAPACITOR [SHIFT]
+                </span>
+                <span className="font-bold text-white tabular-nums">
+                  {stats.dashCharge >= 95 ? 'READY' : `${Math.round(stats.dashCharge)}%`}
+                </span>
+              </div>
+              <div className="w-full h-1.5 bg-white/10 overflow-hidden">
+                <div
+                  className="h-full transition-all duration-100"
+                  style={{
+                    width: `${(stats.dashCharge / stats.maxDashCharge) * 100}%`,
+                    backgroundColor: stats.dashCharge >= 95 ? '#ffaa00' : 'rgba(255, 170, 0, 0.4)',
+                    boxShadow: stats.dashCharge >= 95 ? '0 0 8px #ffaa00' : 'none',
+                  }}
+                />
+              </div>
             </div>
           </div>
-        </div>
+        )}
+
+        {isTouchControls && <div />}
 
         {/* Bottom Right: Audio Mute & Controls Reminder */}
         <div className="flex items-center gap-3 pointer-events-auto">

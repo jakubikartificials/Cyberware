@@ -1,6 +1,6 @@
 import React from 'react';
 import { GameSettings, PlayerStats } from '../types';
-import { Play, RotateCcw, Home, Volume2, VolumeX, Eye, Gauge } from 'lucide-react';
+import { Play, RotateCcw, Home, Volume2, VolumeX, Eye, Gauge, Smartphone } from 'lucide-react';
 import { PWAInstallButton } from '../pwa/PWAInstallButton';
 
 interface PauseModalProps {
@@ -133,6 +133,28 @@ export const PauseModal: React.FC<PauseModalProps> = ({
               onChange={(e) => onUpdateSettings({ fov: parseInt(e.target.value) })}
               className="w-32 accent-cyan-400 cursor-pointer"
             />
+          </div>
+
+          {/* Touch Controls Toggle */}
+          <div className="flex items-center justify-between">
+            <span className="flex items-center gap-2 text-white/70">
+              <Smartphone className="w-3.5 h-3.5" /> TOUCH CONTROLS
+            </span>
+            <div className="flex border border-white/20 bg-black text-[10px]">
+              {(['auto', 'on', 'off'] as const).map((mode) => (
+                <button
+                  key={mode}
+                  onClick={() => onUpdateSettings({ touchControls: mode })}
+                  className={`px-2 py-0.5 uppercase cursor-pointer ${
+                    settings.touchControls === mode
+                      ? 'bg-cyan-400 text-black font-bold'
+                      : 'text-white/60 hover:text-white'
+                  }`}
+                >
+                  {mode}
+                </button>
+              ))}
+            </div>
           </div>
 
           {/* Audio Mute */}

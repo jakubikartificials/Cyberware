@@ -139,13 +139,13 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
         </div>
       </div>
 
-      {/* Flat Control Hint Line mandated by game craft guidelines */}
+      {/* Flat Control Hint Line */}
       <div className="border-t border-white/10 pt-4 flex flex-col sm:flex-row items-center justify-between font-mono text-xs text-white/50">
         <div className="tracking-wider">
-          WASD Move · Space Jump · Shift Dash · Left-Click Pulse · Esc Pause · M Mute
+          WASD / Virtual Joystick Move · Space / Tap Jump · Shift / Tap Dash · Swipe Look
         </div>
         <div className="tracking-widest uppercase text-white/30 text-[10px] mt-1 sm:mt-0">
-          60FPS KINEMATIC SIMULATION // PROCEDURAL THREE.JS
+          MOBILE & DESKTOP MULTIPLATFORM // 60FPS THREE.JS
         </div>
       </div>
     </div>

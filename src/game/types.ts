@@ -101,4 +101,5 @@ export interface GameSettings {
   invertY: boolean;
   fov: number;
   showScanlines: boolean;
+  touchControls: 'auto' | 'on' | 'off';
 }

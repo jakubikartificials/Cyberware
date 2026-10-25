@@ -29,6 +29,12 @@ export class WireScene {
     right: false,
   };
 
+  // Track analog touch inputs from on-screen joystick
+  public touchInputs = {
+    analogX: 0,
+    analogZ: 0,
+  };
+
   // State refs
   public gameState: GameState = 'title';
   public settings: GameSettings;
@@ -393,7 +399,11 @@ export class WireScene {
 
       this.player.update(
         dt,
-        this.heldKeys,
+        {
+          ...this.heldKeys,
+          analogX: this.touchInputs.analogX,
+          analogZ: this.touchInputs.analogZ,
+        },
         this.mazeData,
         this.settings,
         this.stats,
@@ -523,6 +533,35 @@ export class WireScene {
     this.renderer.dispose();
     if (this.container.contains(this.renderer.domElement)) {
       this.container.removeChild(this.renderer.domElement);
+    }
+  }
+
+  // Touch action handlers for mobile/tablet controls
+  public handleTouchLook(dx: number, dy: number): void {
+    if (this.gameState === 'playing') {
+      this.player.handleMouseMove(dx, dy, this.settings);
+    }
+  }
+
+  public handleTouchJump(): void {
+    if (this.gameState === 'playing') {
+      const nearBeat = soundSynth.getBeatProgress().isNearBeat;
+      this.player.queueJump(nearBeat);
+    }
+  }
+
+  public handleTouchDash(): void {
+    if (this.gameState === 'playing') {
+      const nearBeat = soundSynth.getBeatProgress().isNearBeat;
+      const x = this.touchInputs.analogX;
+      const z = -this.touchInputs.analogZ;
+      this.player.triggerDash(x, z, nearBeat);
+    }
+  }
+
+  public handleTouchPulse(): void {
+    if (this.gameState === 'playing') {
+      this.player.firePulse(this.scene);
     }
   }
 }

@@ -13,6 +13,7 @@ import { HUDOverlay } from './game/ui/HUDOverlay';
 import { PauseModal } from './game/ui/PauseModal';
 import { VictoryModal } from './game/ui/VictoryModal';
 import { GameOverModal } from './game/ui/GameOverModal';
+import { MobileControls } from './game/ui/MobileControls';
 import { useOnlineStatus } from './game/pwa/useOnlineStatus';
 import { WifiOff } from 'lucide-react';
 
@@ -43,6 +44,7 @@ const DEFAULT_SETTINGS: GameSettings = {
   invertY: false,
   fov: 75,
   showScanlines: true,
+  touchControls: 'auto',
 };
 
 export default function App() {
@@ -68,6 +70,16 @@ export default function App() {
 
   const [isNewBest, setIsNewBest] = useState(false);
   const isOnline = useOnlineStatus();
+
+  // Detect touchscreen presence
+  const [isTouchDevice] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return false;
+    return Boolean('ontouchstart' in window || (navigator.maxTouchPoints && navigator.maxTouchPoints > 0));
+  });
+
+  const shouldShowTouch: boolean =
+    settings.touchControls === 'on' ||
+    (settings.touchControls === 'auto' && isTouchDevice);
 
   // Initialize Three.js scene once on mount
   useEffect(() => {
@@ -241,19 +253,53 @@ export default function App() {
       )}
 
       {gameState === 'playing' && (
-        <HUDOverlay
-          stats={stats}
-          settings={settings}
-          onToggleMute={handleToggleMute}
-          onPause={() => {
-            if (wireSceneRef.current) {
-              wireSceneRef.current.gameState = 'paused';
-              setGameState('paused');
-              document.exitPointerLock?.();
-            }
-          }}
-          bannerNotification={bannerNotification}
-        />
+        <>
+          <HUDOverlay
+            stats={stats}
+            settings={settings}
+            onToggleMute={handleToggleMute}
+            onPause={() => {
+              if (wireSceneRef.current) {
+                wireSceneRef.current.gameState = 'paused';
+                setGameState('paused');
+                document.exitPointerLock?.();
+              }
+            }}
+            bannerNotification={bannerNotification}
+            isTouchControls={shouldShowTouch}
+          />
+
+          {shouldShowTouch && (
+            <MobileControls
+              onMove={(analogX, analogZ) => {
+                if (wireSceneRef.current) {
+                  wireSceneRef.current.touchInputs.analogX = analogX;
+                  wireSceneRef.current.touchInputs.analogZ = analogZ;
+                }
+              }}
+              onLook={(deltaX, deltaY) => {
+                wireSceneRef.current?.handleTouchLook(deltaX, deltaY);
+              }}
+              onJump={() => {
+                wireSceneRef.current?.handleTouchJump();
+              }}
+              onDash={() => {
+                wireSceneRef.current?.handleTouchDash();
+              }}
+              onPulse={() => {
+                wireSceneRef.current?.handleTouchPulse();
+              }}
+              onPause={() => {
+                if (wireSceneRef.current) {
+                  wireSceneRef.current.gameState = 'paused';
+                  setGameState('paused');
+                  document.exitPointerLock?.();
+                }
+              }}
+              dashCharge={stats.dashCharge}
+            />
+          )}
+        </>
       )}
 
       {gameState === 'paused' && (
