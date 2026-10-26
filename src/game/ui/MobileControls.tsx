@@ -1,5 +1,5 @@
 import React, { useRef, useState, useEffect, useCallback } from 'react';
-import { ArrowUp, Zap, Crosshair, Pause, Maximize, Minimize, Camera } from 'lucide-react';
+import { ArrowUp, Zap, Crosshair, Pause, Maximize, Minimize, Grid } from 'lucide-react';
 
 interface MobileControlsProps {
   onMove: (analogX: number, analogZ: number) => void;
@@ -7,12 +7,11 @@ interface MobileControlsProps {
   onJump: () => void;
   onDash: () => void;
   onPulse: () => void;
+  onNet: () => void;
   onPause: () => void;
   dashCharge: number;
   isFullscreen?: boolean;
   onToggleFullscreen?: () => void;
-  cameraMode?: 'first' | 'third';
-  onToggleCamera?: () => void;
 }
 
 export const MobileControls: React.FC<MobileControlsProps> = ({
@@ -21,12 +20,11 @@ export const MobileControls: React.FC<MobileControlsProps> = ({
   onJump,
   onDash,
   onPulse,
+  onNet,
   onPause,
   dashCharge,
   isFullscreen = false,
   onToggleFullscreen,
-  cameraMode = 'third',
-  onToggleCamera,
 }) => {
   // Joystick state
   const joystickContainerRef = useRef<HTMLDivElement>(null);
@@ -109,9 +107,7 @@ export const MobileControls: React.FC<MobileControlsProps> = ({
 
   // Handle Touch Look on Right Side
   const handleLookTouchStart = (e: React.TouchEvent) => {
-    // If we're already tracking a look touch, ignore
     if (lookTouchIdRef.current !== null) return;
-
     const touch = e.changedTouches[0];
     lookTouchIdRef.current = touch.identifier;
     lastLookPosRef.current = { x: touch.clientX, y: touch.clientY };
@@ -127,7 +123,6 @@ export const MobileControls: React.FC<MobileControlsProps> = ({
         const deltaY = touch.clientY - lastLookPosRef.current.y;
         lastLookPosRef.current = { x: touch.clientX, y: touch.clientY };
 
-        // Scale touch look delta for smooth responsiveness
         onLook(deltaX * 1.6, deltaY * 1.6);
         break;
       }
@@ -146,7 +141,6 @@ export const MobileControls: React.FC<MobileControlsProps> = ({
     }
   }, []);
 
-  // Global window touchmove and touchend listeners
   useEffect(() => {
     window.addEventListener('touchmove', handleJoystickTouchMove, { passive: false });
     window.addEventListener('touchend', handleJoystickTouchEnd);
@@ -169,7 +163,7 @@ export const MobileControls: React.FC<MobileControlsProps> = ({
 
   return (
     <div className="absolute inset-0 pointer-events-none select-none z-20 flex flex-col justify-between overflow-hidden">
-      {/* Top Touch Controls Header: Pause, Camera, and Fullscreen Buttons for mobile users */}
+      {/* Top Touch Controls Header: Pause and Fullscreen Buttons */}
       <div className="flex items-center justify-between p-4 pointer-events-auto">
         <button
           onClick={onPause}
@@ -179,33 +173,21 @@ export const MobileControls: React.FC<MobileControlsProps> = ({
           <span>PAUSE</span>
         </button>
 
-        <div className="flex items-center gap-2">
-          {onToggleCamera && (
-            <button
-              onClick={onToggleCamera}
-              className="flex items-center gap-1 px-3 py-1.5 bg-black/80 border border-orange-500/70 text-orange-400 font-mono text-xs hover:border-orange-300 active:scale-95 transition-all cursor-pointer shadow-[0_0_10px_rgba(255,119,0,0.3)]"
-            >
-              <Camera className="w-3.5 h-3.5" />
-              <span>{cameraMode === 'third' ? '3P SPIDER' : '1P COCKPIT'}</span>
-            </button>
-          )}
-
-          {onToggleFullscreen && (
-            <button
-              onClick={onToggleFullscreen}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-black/80 border border-white/30 text-white font-mono text-xs hover:border-cyan-400 hover:text-cyan-400 active:scale-95 transition-all cursor-pointer shadow-[0_0_10px_rgba(0,0,0,0.8)]"
-              title="Toggle Fullscreen"
-            >
-              {isFullscreen ? <Minimize className="w-3.5 h-3.5 text-cyan-400" /> : <Maximize className="w-3.5 h-3.5 text-cyan-400" />}
-              <span className="hidden sm:inline">{isFullscreen ? 'EXIT' : 'FULL'}</span>
-            </button>
-          )}
-        </div>
+        {onToggleFullscreen && (
+          <button
+            onClick={onToggleFullscreen}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-black/80 border border-white/30 text-white font-mono text-xs hover:border-cyan-400 hover:text-cyan-400 active:scale-95 transition-all cursor-pointer shadow-[0_0_10px_rgba(0,0,0,0.8)]"
+            title="Toggle Fullscreen"
+          >
+            {isFullscreen ? <Minimize className="w-3.5 h-3.5 text-cyan-400" /> : <Maximize className="w-3.5 h-3.5 text-cyan-400" />}
+            <span className="hidden sm:inline">{isFullscreen ? 'EXIT' : 'FULL'}</span>
+          </button>
+        )}
       </div>
 
       {/* Main Touch Interaction Zone */}
       <div className="flex-1 w-full flex">
-        {/* Left 45%: Reserved for joystick and thumb navigation */}
+        {/* Left 45%: Reserved for joystick */}
         <div className="w-[45%] h-full pointer-events-none" />
 
         {/* Right 55%: Touch-to-Look Swipe Surface */}
@@ -216,22 +198,20 @@ export const MobileControls: React.FC<MobileControlsProps> = ({
       </div>
 
       {/* Bottom Controls Row: Virtual Joystick (Left) and Action Buttons (Right) */}
-      <div className="p-5 pb-7 flex items-end justify-between w-full pointer-events-none">
+      <div className="p-4 sm:p-5 pb-6 flex items-end justify-between w-full pointer-events-none">
         {/* Left Side: Virtual Analog Joystick */}
         <div className="pointer-events-auto touch-none flex flex-col items-center">
           <div
             ref={joystickContainerRef}
             onTouchStart={handleJoystickTouchStart}
-            className="relative w-32 h-32 rounded-full border border-cyan-400/40 bg-black/50 flex items-center justify-center shadow-[0_0_15px_rgba(0,240,255,0.15)]"
+            className="relative w-30 h-30 rounded-full border border-cyan-400/40 bg-black/50 flex items-center justify-center shadow-[0_0_15px_rgba(0,240,255,0.15)]"
           >
-            {/* Crosshairs inside joystick base */}
             <div className="absolute w-full h-[1px] bg-cyan-400/20" />
             <div className="absolute h-full w-[1px] bg-cyan-400/20" />
-            <div className="w-12 h-12 rounded-full border border-cyan-400/20" />
+            <div className="w-10 h-10 rounded-full border border-cyan-400/20" />
 
-            {/* Draggable Knob */}
             <div
-              className={`absolute w-14 h-14 rounded-full border-2 transition-transform duration-75 flex items-center justify-center ${
+              className={`absolute w-13 h-13 rounded-full border-2 transition-transform duration-75 flex items-center justify-center ${
                 isJoystickActive
                   ? 'border-cyan-300 bg-cyan-400/30 shadow-[0_0_15px_#00f0ff]'
                   : 'border-cyan-400/70 bg-black/70'
@@ -240,18 +220,31 @@ export const MobileControls: React.FC<MobileControlsProps> = ({
                 transform: `translate(${knobPos.x}px, ${knobPos.y}px)`,
               }}
             >
-              <div className="w-3 h-3 rounded-full bg-cyan-400 shadow-[0_0_6px_#00f0ff]" />
+              <div className="w-2.5 h-2.5 rounded-full bg-cyan-400 shadow-[0_0_6px_#00f0ff]" />
             </div>
           </div>
-          <span className="text-[10px] font-mono tracking-widest text-cyan-400/60 mt-1 uppercase">
-            MOVE // THUMB
+          <span className="text-[9px] font-mono tracking-widest text-cyan-400/60 mt-1 uppercase">
+            THUMB MOVE
           </span>
         </div>
 
         {/* Right Side: Action Buttons Cluster */}
-        <div className="pointer-events-auto flex items-end gap-3.5">
-          {/* Action Column 1: Pulse and Dash */}
-          <div className="flex flex-col gap-3 items-center">
+        <div className="pointer-events-auto flex items-end gap-2.5 sm:gap-3.5">
+          {/* Action Column 1: Pulse Net and Pulse Blaster */}
+          <div className="flex flex-col gap-2.5 items-center">
+            {/* Deploy Pulse Net Button */}
+            <button
+              onTouchStart={(e) => {
+                e.preventDefault();
+                onNet();
+              }}
+              onClick={onNet}
+              className="w-12 h-12 rounded-full border border-cyan-400 bg-cyan-950/70 flex flex-col items-center justify-center text-cyan-300 active:scale-90 shadow-[0_0_12px_rgba(0,240,255,0.35)] transition-transform cursor-pointer"
+            >
+              <Grid className="w-4 h-4 text-cyan-400" />
+              <span className="text-[7.5px] font-mono font-bold tracking-tight mt-0.5">NET</span>
+            </button>
+
             {/* Pulse Weapon Button */}
             <button
               onTouchStart={(e) => {
@@ -259,13 +252,16 @@ export const MobileControls: React.FC<MobileControlsProps> = ({
                 onPulse();
               }}
               onClick={onPulse}
-              className="w-13 h-13 rounded-full border border-pink-500 bg-black/70 flex flex-col items-center justify-center text-pink-400 active:scale-90 active:bg-pink-500/30 shadow-[0_0_12px_rgba(255,0,128,0.3)] transition-transform cursor-pointer"
+              className="w-12 h-12 rounded-full border border-pink-500 bg-black/70 flex flex-col items-center justify-center text-pink-400 active:scale-90 shadow-[0_0_12px_rgba(255,0,128,0.3)] transition-transform cursor-pointer"
             >
               <Crosshair className="w-4 h-4" />
-              <span className="text-[8px] font-mono font-bold tracking-tight mt-0.5">PULSE</span>
+              <span className="text-[7.5px] font-mono font-bold tracking-tight mt-0.5">PULSE</span>
             </button>
+          </div>
 
-            {/* Air Dash Button */}
+          {/* Action Column 2: Dash and Jump */}
+          <div className="flex flex-col gap-2.5 items-center">
+            {/* Dash Button */}
             <button
               onTouchStart={(e) => {
                 e.preventDefault();
@@ -273,33 +269,28 @@ export const MobileControls: React.FC<MobileControlsProps> = ({
               }}
               onClick={onDash}
               disabled={dashCharge < 90}
-              className={`w-13 h-13 rounded-full border flex flex-col items-center justify-center transition-transform cursor-pointer active:scale-90 ${
+              className={`w-12 h-12 rounded-full border flex flex-col items-center justify-center transition-transform cursor-pointer active:scale-90 ${
                 dashCharge >= 90
                   ? 'border-amber-400 bg-black/70 text-amber-400 shadow-[0_0_12px_rgba(255,170,0,0.3)]'
                   : 'border-white/20 bg-black/40 text-white/30 cursor-not-allowed'
               }`}
             >
               <Zap className="w-4 h-4" />
-              <span className="text-[8px] font-mono font-bold tracking-tight mt-0.5">DASH</span>
+              <span className="text-[7.5px] font-mono font-bold tracking-tight mt-0.5">DASH</span>
             </button>
-          </div>
 
-          {/* Action Column 2: Jump Button */}
-          <div className="flex flex-col items-center">
+            {/* Jump Button */}
             <button
               onTouchStart={(e) => {
                 e.preventDefault();
                 onJump();
               }}
               onClick={onJump}
-              className="w-20 h-20 rounded-full border-2 border-white bg-white/10 flex flex-col items-center justify-center text-white active:scale-90 active:bg-white/30 shadow-[0_0_20px_rgba(255,255,255,0.4)] transition-transform cursor-pointer"
+              className="w-16 h-16 rounded-full border-2 border-white bg-white/10 flex flex-col items-center justify-center text-white active:scale-90 active:bg-white/30 shadow-[0_0_20px_rgba(255,255,255,0.4)] transition-transform cursor-pointer"
             >
-              <ArrowUp className="w-7 h-7 stroke-[2.5]" />
-              <span className="text-[10px] font-mono font-black tracking-widest mt-0.5">JUMP</span>
+              <ArrowUp className="w-6 h-6 stroke-[2.5]" />
+              <span className="text-[9px] font-mono font-black tracking-widest mt-0.5">JUMP</span>
             </button>
-            <span className="text-[10px] font-mono tracking-widest text-white/50 mt-1 uppercase">
-              ACTION
-            </span>
           </div>
         </div>
       </div>

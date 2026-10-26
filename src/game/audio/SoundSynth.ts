@@ -512,6 +512,28 @@ export class SoundSynth {
     osc.stop(now + 0.5);
   }
 
+  public playSwitchHit(): void {
+    this.resumeContext();
+    if (!this.ctx || !this.sfxGain || this.isMuted) return;
+    const now = this.ctx.currentTime;
+
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(587.33, now);
+    osc.frequency.exponentialRampToValueAtTime(1174.66, now + 0.12);
+
+    gain.gain.setValueAtTime(0.3, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.15);
+
+    osc.connect(gain);
+    gain.connect(this.sfxGain);
+
+    osc.start(now);
+    osc.stop(now + 0.16);
+  }
+
   public playBeatBonus(): void {
     this.resumeContext();
     if (!this.ctx || !this.sfxGain || this.isMuted) return;
@@ -583,6 +605,90 @@ export class SoundSynth {
 
     osc.start(now);
     osc.stop(now + 0.4);
+  }
+
+  public playPulseNetDeploy(): void {
+    this.resumeContext();
+    if (!this.ctx || !this.sfxGain || this.isMuted) return;
+    const now = this.ctx.currentTime;
+
+    // Dual-tone harmonic electric resonance sweep
+    [440, 880, 1320].forEach((freq, idx) => {
+      const osc = this.ctx!.createOscillator();
+      const gain = this.ctx!.createGain();
+
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(freq, now + idx * 0.03);
+      osc.frequency.exponentialRampToValueAtTime(freq * 1.8, now + idx * 0.03 + 0.28);
+
+      gain.gain.setValueAtTime(0.25, now + idx * 0.03);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + idx * 0.03 + 0.32);
+
+      osc.connect(gain);
+      gain.connect(this.sfxGain!);
+
+      osc.start(now + idx * 0.03);
+      osc.stop(now + idx * 0.03 + 0.35);
+    });
+  }
+
+  public playLevelShift(): void {
+    this.resumeContext();
+    if (!this.ctx || !this.sfxGain || this.isMuted) return;
+    const now = this.ctx.currentTime;
+
+    // Sub rumble and mechanical clank
+    const subOsc = this.ctx.createOscillator();
+    const subGain = this.ctx.createGain();
+    subOsc.type = 'sawtooth';
+    subOsc.frequency.setValueAtTime(75, now);
+    subOsc.frequency.exponentialRampToValueAtTime(32, now + 0.6);
+
+    subGain.gain.setValueAtTime(0.5, now);
+    subGain.gain.exponentialRampToValueAtTime(0.001, now + 0.65);
+
+    subOsc.connect(subGain);
+    subGain.connect(this.sfxGain);
+
+    subOsc.start(now);
+    subOsc.stop(now + 0.7);
+
+    // Mechanical gear click
+    const clickOsc = this.ctx.createOscillator();
+    const clickGain = this.ctx.createGain();
+    clickOsc.type = 'square';
+    clickOsc.frequency.setValueAtTime(520, now + 0.05);
+    clickOsc.frequency.exponentialRampToValueAtTime(260, now + 0.18);
+
+    clickGain.gain.setValueAtTime(0.3, now + 0.05);
+    clickGain.gain.exponentialRampToValueAtTime(0.001, now + 0.22);
+
+    clickOsc.connect(clickGain);
+    clickGain.connect(this.sfxGain);
+
+    clickOsc.start(now + 0.05);
+    clickOsc.stop(now + 0.25);
+  }
+
+  public playWallMagnetize(): void {
+    this.resumeContext();
+    if (!this.ctx || !this.sfxGain || this.isMuted) return;
+    const now = this.ctx.currentTime;
+
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(950, now);
+    osc.frequency.exponentialRampToValueAtTime(1400, now + 0.08);
+
+    gain.gain.setValueAtTime(0.2, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.1);
+
+    osc.connect(gain);
+    gain.connect(this.sfxGain);
+
+    osc.start(now);
+    osc.stop(now + 0.12);
   }
 }
 

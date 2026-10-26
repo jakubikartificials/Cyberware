@@ -28,11 +28,14 @@ export class CyberCrawler {
   private legs: LegJoints[] = [];
   private walkCycleTime: number = 0;
   private baseChassisY: number = 1.3;
+  public surfaceNormal: THREE.Vector3 = new THREE.Vector3(0, 1, 0);
 
   constructor(colorHex: number = 0xff7700, isPlayer: boolean = false) {
     this.colorHex = colorHex;
     this.isPlayer = isPlayer;
     this.group = new THREE.Group();
+    // Exactly 4 times smaller scale as requested
+    this.group.scale.set(0.25, 0.25, 0.25);
 
     // 1. Build Central Inverted Diamond / Pyramidal Chassis matching reference image
     const chassisGeom = new THREE.BufferGeometry();
@@ -229,9 +232,19 @@ export class CyberCrawler {
     }
   }
 
-  public setPositionAndRotation(pos: THREE.Vector3, yaw: number): void {
+  public setPositionAndRotation(pos: THREE.Vector3, yaw: number, surfaceNormal?: THREE.Vector3): void {
     this.group.position.copy(pos);
-    this.group.rotation.y = yaw;
+    if (!surfaceNormal || Math.abs(surfaceNormal.y - 1) < 0.05) {
+      // Standard floor orientation
+      this.group.quaternion.setFromAxisAngle(new THREE.Vector3(0, 1, 0), yaw);
+    } else {
+      // Wall / ceiling orientation: orient group up vector to surface normal
+      const targetUp = surfaceNormal.clone().normalize();
+      const defaultUp = new THREE.Vector3(0, 1, 0);
+      const quatAlign = new THREE.Quaternion().setFromUnitVectors(defaultUp, targetUp);
+      const quatYaw = new THREE.Quaternion().setFromAxisAngle(targetUp, yaw);
+      this.group.quaternion.copy(quatAlign.multiply(quatYaw));
+    }
   }
 
   public setVisible(visible: boolean): void {

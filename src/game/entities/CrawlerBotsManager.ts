@@ -3,6 +3,7 @@ import { CyberCrawler } from './CyberCrawler';
 import { MazeData } from '../world/MazeBuilder';
 import { soundSynth } from '../audio/SoundSynth';
 import { PlayerStats } from '../types';
+import { PulseNetManager } from './PulseNetManager';
 
 export interface BotRunner {
   id: string;
@@ -150,7 +151,8 @@ export class CrawlerBotsManager {
     playerPos: THREE.Vector3,
     mazeData: MazeData,
     stats: PlayerStats,
-    onPlayerDamaged: (amount: number) => void
+    onPlayerDamaged: (amount: number) => void,
+    pulseNetManager?: PulseNetManager
   ): void {
     // 1. Update Competitor Bot Runners
     for (const runner of this.botRunners) {
@@ -188,6 +190,13 @@ export class CrawlerBotsManager {
     // 2. Update Hazard Crawler Bots
     for (const bot of this.hazardCrawlers) {
       if (!bot.alive) continue;
+
+      // Check if hazard crawler wandered into a Pulse Net barrier
+      if (pulseNetManager && pulseNetManager.checkCrawlerNetTrap(bot.position, stats)) {
+        bot.alive = false;
+        bot.crawler.setVisible(false);
+        continue;
+      }
 
       if (bot.stunnedTimer > 0) {
         bot.stunnedTimer -= dt;

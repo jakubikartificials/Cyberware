@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
-import { PlayerStats, GameSettings } from '../types';
+import { PlayerStats, GameSettings, MultiplayerPlayerState } from '../types';
 import { soundSynth } from '../audio/SoundSynth';
-import { Volume2, VolumeX, Crosshair, Zap, Shield, Sparkles, Maximize, Minimize, Camera } from 'lucide-react';
+import { Volume2, VolumeX, Shield, Sparkles, Maximize, Minimize, Compass, Radio, Grid } from 'lucide-react';
 
 interface HUDOverlayProps {
   stats: PlayerStats;
@@ -12,8 +12,11 @@ interface HUDOverlayProps {
   isTouchControls?: boolean;
   isFullscreen?: boolean;
   onToggleFullscreen?: () => void;
-  cameraMode?: 'first' | 'third';
-  onToggleCamera?: () => void;
+  isWallWalking?: boolean;
+  pulseNetCooldown?: number;
+  isMultiplayerConnected?: boolean;
+  multiplayerPing?: number;
+  remotePlayerState?: MultiplayerPlayerState | null;
 }
 
 export const HUDOverlay: React.FC<HUDOverlayProps> = ({
@@ -24,10 +27,12 @@ export const HUDOverlay: React.FC<HUDOverlayProps> = ({
   isTouchControls = false,
   isFullscreen = false,
   onToggleFullscreen,
-  cameraMode = 'third',
-  onToggleCamera,
+  isWallWalking = false,
+  pulseNetCooldown = 0,
+  isMultiplayerConnected = false,
+  multiplayerPing = 0,
+  remotePlayerState = null,
 }) => {
-  // Local state for smooth beat indicator
   const [beatPhase, setBeatPhase] = useState(0);
   const [isNearBeat, setIsNearBeat] = useState(false);
 
@@ -43,7 +48,6 @@ export const HUDOverlay: React.FC<HUDOverlayProps> = ({
     return () => cancelAnimationFrame(frameId);
   }, []);
 
-  // Format time MM:SS.ms
   const formatTime = (secs: number) => {
     const m = Math.floor(secs / 60);
     const s = Math.floor(secs % 60);
@@ -55,10 +59,10 @@ export const HUDOverlay: React.FC<HUDOverlayProps> = ({
   const activeColor = sectorColors[Math.min(sectorColors.length - 1, stats.currentSector)];
 
   return (
-    <div className="absolute inset-0 pointer-events-none select-none z-10 flex flex-col justify-between p-5">
+    <div className="absolute inset-0 pointer-events-none select-none z-10 flex flex-col justify-between p-4 sm:p-5">
       {/* Top Bar Status Clusters */}
       <div className="flex items-start justify-between w-full">
-        {/* Top Left: Timer & Sector Indicator */}
+        {/* Top Left: Timer, Sector & Wall-Magnet Indicator */}
         <div className="flex flex-col gap-1 pointer-events-auto">
           <div className="flex items-center gap-2 px-3 py-1.5 bg-black/70 border border-white/20">
             <span className="text-[10px] tracking-widest text-white/50 uppercase font-mono">TIMER</span>
@@ -73,26 +77,30 @@ export const HUDOverlay: React.FC<HUDOverlayProps> = ({
             </span>
           </div>
 
-          {/* Compact Mobile Gauges */}
-          {isTouchControls && (
-            <div className="flex flex-col gap-1 mt-1">
-              <div className="flex items-center gap-2 px-2 py-0.5 bg-black/80 border border-cyan-400/40 text-[10px] font-mono">
-                <Shield className="w-2.5 h-2.5 text-cyan-400" />
-                <span className="text-white/60">INTEGRITY:</span>
-                <span className="text-cyan-400 font-bold">{Math.round(stats.health)}%</span>
-              </div>
-              <div className="flex items-center gap-2 px-2 py-0.5 bg-black/80 border border-amber-400/40 text-[10px] font-mono">
-                <Zap className="w-2.5 h-2.5 text-amber-400" />
-                <span className="text-white/60">DASH:</span>
-                <span className="text-amber-400 font-bold">
-                  {stats.dashCharge >= 95 ? 'READY' : `${Math.round(stats.dashCharge)}%`}
+          {/* Wall-Walking Magnetic Indicator */}
+          {isWallWalking && (
+            <div className="flex items-center gap-1.5 px-2.5 py-1 bg-cyan-950/80 border border-cyan-400 font-mono text-[10px] text-cyan-300 shadow-[0_0_12px_rgba(0,240,255,0.4)] animate-pulse">
+              <Compass className="w-3.5 h-3.5" />
+              <span className="font-bold">WALL-WALK CLING ENGAGED</span>
+            </div>
+          )}
+
+          {/* 2-Player Online Status */}
+          {isMultiplayerConnected && (
+            <div className="flex items-center gap-2 px-2.5 py-1 bg-pink-950/80 border border-pink-500 font-mono text-[10px] text-pink-300 shadow-[0_0_12px_rgba(255,0,128,0.3)]">
+              <Radio className="w-3.5 h-3.5 animate-pulse" />
+              <span className="font-bold">P2 CONNECTED</span>
+              <span className="text-white/60">({multiplayerPing}ms)</span>
+              {remotePlayerState && (
+                <span className="text-pink-400 font-bold ml-1">
+                  SEC 0{remotePlayerState.checkpointSector}
                 </span>
-              </div>
+              )}
             </div>
           )}
         </div>
 
-        {/* Top Center: 120 BPM Rhythmic Pulse Metronome & Beat Streak */}
+        {/* Top Center: 120 BPM Rhythmic Metronome */}
         <div className="flex flex-col items-center gap-1.5">
           <div className="flex items-center gap-3 px-4 py-1.5 bg-black/75 border border-white/20">
             <div className="flex items-center gap-1">
@@ -127,7 +135,6 @@ export const HUDOverlay: React.FC<HUDOverlayProps> = ({
             </div>
           </div>
 
-          {/* Rhythmic timing feedback label */}
           {isNearBeat && stats.beatCombo > 0 && (
             <div
               className="text-[10px] font-mono tracking-widest uppercase font-bold transition-opacity"
@@ -172,11 +179,9 @@ export const HUDOverlay: React.FC<HUDOverlayProps> = ({
         </div>
       )}
 
-      {/* Center Reticle: Wireframe FPS Crosshair */}
+      {/* Center Reticle: First-person Cockpit HUD Crosshair */}
       <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-none flex items-center justify-center">
-        {/* Minimal wireframe crosshair */}
-        <div className="relative w-7 h-7 flex items-center justify-center">
-          {/* Outer wire ring */}
+        <div className="relative w-8 h-8 flex items-center justify-center">
           <div
             className="w-5 h-5 border rounded-full transition-transform duration-100"
             style={{
@@ -185,9 +190,7 @@ export const HUDOverlay: React.FC<HUDOverlayProps> = ({
               boxShadow: isNearBeat ? `0 0 8px ${activeColor}` : 'none',
             }}
           />
-          {/* Center pip */}
           <div className="absolute w-1 h-1 bg-white" />
-          {/* Wire ticks */}
           <div className="absolute top-0 w-[1px] h-1.5 bg-white/70" />
           <div className="absolute bottom-0 w-[1px] h-1.5 bg-white/70" />
           <div className="absolute left-0 h-[1px] w-1.5 bg-white/70" />
@@ -195,13 +198,13 @@ export const HUDOverlay: React.FC<HUDOverlayProps> = ({
         </div>
       </div>
 
-      {/* Bottom Bar Status Clusters */}
+      {/* Bottom Bar: Health, Dash, Pulse Net & Controls */}
       <div className="flex items-end justify-between w-full">
-        {/* Bottom Left: Integrity (Health) & Dash Charge (Desktop only) */}
+        {/* Bottom Left: Integrity, Dash, and Pulse Net Capacitors */}
         {!isTouchControls && (
           <div className="flex flex-col gap-2 pointer-events-auto">
             {/* Integrity Bar */}
-            <div className="flex flex-col gap-1 p-2 bg-black/75 border border-white/20 min-w-[200px]">
+            <div className="flex flex-col gap-1 p-2 bg-black/75 border border-white/20 min-w-[210px]">
               <div className="flex items-center justify-between text-[10px] font-mono tracking-wider">
                 <span className="flex items-center gap-1 text-white/60">
                   <Shield className="w-3 h-3 text-cyan-400" /> INTEGRITY
@@ -222,23 +225,23 @@ export const HUDOverlay: React.FC<HUDOverlayProps> = ({
               </div>
             </div>
 
-            {/* Dash Capacitor */}
-            <div className="flex flex-col gap-1 p-2 bg-black/75 border border-white/20 min-w-[200px]">
+            {/* Pulse Net Ability Capacitor */}
+            <div className="flex flex-col gap-1 p-2 bg-black/75 border border-cyan-400/50 min-w-[210px]">
               <div className="flex items-center justify-between text-[10px] font-mono tracking-wider">
-                <span className="flex items-center gap-1 text-white/60">
-                  <Zap className="w-3 h-3 text-amber-400" /> DASH CAPACITOR [SHIFT]
+                <span className="flex items-center gap-1 text-cyan-300 font-bold">
+                  <Grid className="w-3 h-3 text-cyan-400" /> PULSE NET [E / R-CLICK]
                 </span>
-                <span className="font-bold text-white tabular-nums">
-                  {stats.dashCharge >= 95 ? 'READY' : `${Math.round(stats.dashCharge)}%`}
+                <span className="font-bold text-cyan-400 tabular-nums">
+                  {pulseNetCooldown <= 0.05 ? 'READY' : `${Math.ceil(pulseNetCooldown)}s`}
                 </span>
               </div>
               <div className="w-full h-1.5 bg-white/10 overflow-hidden">
                 <div
                   className="h-full transition-all duration-100"
                   style={{
-                    width: `${(stats.dashCharge / stats.maxDashCharge) * 100}%`,
-                    backgroundColor: stats.dashCharge >= 95 ? '#ffaa00' : 'rgba(255, 170, 0, 0.4)',
-                    boxShadow: stats.dashCharge >= 95 ? '0 0 8px #ffaa00' : 'none',
+                    width: `${Math.max(0, 1 - pulseNetCooldown / 3.5) * 100}%`,
+                    backgroundColor: pulseNetCooldown <= 0.05 ? '#00f0ff' : 'rgba(0, 240, 255, 0.4)',
+                    boxShadow: pulseNetCooldown <= 0.05 ? '0 0 8px #00f0ff' : 'none',
                   }}
                 />
               </div>
@@ -248,33 +251,21 @@ export const HUDOverlay: React.FC<HUDOverlayProps> = ({
 
         {isTouchControls && <div />}
 
-        {/* Bottom Right: Audio Mute, Camera Mode, Fullscreen & Controls Reminder */}
+        {/* Bottom Right: Controls Reminder & Fullscreen */}
         <div className="flex items-center gap-3 pointer-events-auto">
           <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 bg-black/70 border border-white/10 text-[11px] font-mono text-white/50">
             <span>[WASD] MOVE</span>
             <span>•</span>
-            <span>[SPACE] JUMP</span>
+            <span>[SPACE] WALL LEAP</span>
+            <span>•</span>
+            <span>[E/R-CLICK] PULSE NET</span>
+            <span>•</span>
+            <span>[CLICK/F] PULSE</span>
             <span>•</span>
             <span>[SHIFT] DASH</span>
             <span>•</span>
-            <span>[V] CAM ({cameraMode === 'third' ? '3P SPIDER' : '1P COCKPIT'})</span>
-            <span>•</span>
-            <span>[CLICK] PULSE</span>
-            <span>•</span>
             <span>[ESC] PAUSE</span>
           </div>
-
-          {/* Camera View Mode button */}
-          {onToggleCamera && (
-            <button
-              onClick={onToggleCamera}
-              className="flex items-center gap-1.5 px-2.5 h-9 bg-black/80 border border-orange-400/60 text-orange-400 font-mono text-xs hover:border-orange-300 hover:text-white transition-colors cursor-pointer shadow-[0_0_10px_rgba(255,119,0,0.2)]"
-              title="Toggle Camera View [V]"
-            >
-              <Camera className="w-3.5 h-3.5" />
-              <span>{cameraMode === 'third' ? '3P SPIDER' : '1P COCKPIT'}</span>
-            </button>
-          )}
 
           {/* Fullscreen button */}
           {onToggleFullscreen && (

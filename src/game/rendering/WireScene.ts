@@ -5,6 +5,8 @@ import { PlayerController } from '../physics/PlayerController';
 import { soundSynth } from '../audio/SoundSynth';
 import { GameSettings, PlayerStats, GameState } from '../types';
 import { CrawlerBotsManager } from '../entities/CrawlerBotsManager';
+import { PulseNetManager } from '../entities/PulseNetManager';
+import { NetworkManager } from '../multiplayer/NetworkManager';
 
 export class WireScene {
   public renderer!: THREE.WebGLRenderer;
@@ -13,6 +15,8 @@ export class WireScene {
   public mazeData!: MazeData;
   public player!: PlayerController;
   public crawlerBotsManager!: CrawlerBotsManager;
+  public pulseNetManager!: PulseNetManager;
+  public networkManager!: NetworkManager;
   public runnerCount: number = 4;
 
   private container: HTMLElement;
@@ -23,6 +27,10 @@ export class WireScene {
 
   // Title screen camera path
   private titleCamAngle: number = 0;
+
+  // Dynamic Level Disposition Shift state
+  private dispositionTimer: number = 0;
+  private isDispositionShifted: boolean = false;
 
   // Track key states
   public heldKeys = {
@@ -71,7 +79,6 @@ export class WireScene {
   }
 
   private initRenderer(): void {
-    // Detect software WebGL as mandated by Three.js skill
     this.isSoftwareGl = (() => {
       const gl = document.createElement('canvas').getContext('webgl2');
       if (!gl) return true;
@@ -103,7 +110,7 @@ export class WireScene {
     this.scene.fog = new THREE.FogExp2(0x000000, 0.016);
 
     const aspect = this.container.clientWidth / this.container.clientHeight;
-    this.camera = new THREE.PerspectiveCamera(this.settings.fov, aspect, 0.1, 400);
+    this.camera = new THREE.PerspectiveCamera(this.settings.fov, aspect, 0.05, 450);
 
     // Studio Environment reflection
     const pmrem = new THREE.PMREMGenerator(this.renderer);
@@ -128,7 +135,53 @@ export class WireScene {
     this.player.setSpawnPosition([0, 0, 5], 0);
     this.scene.add(this.player.crawler.group);
 
-    // Initialize Crawler Bots Manager (Bot Runners + Hazard Spiders)
+    // Initialize Pulse Net Manager
+    this.pulseNetManager = new PulseNetManager(this.scene);
+    this.pulseNetManager.onDispositionShift = () => {
+      this.triggerLevelDispositionShift();
+      this.networkManager.sendDispositionShift();
+    };
+
+    // Initialize Multiplayer Network Manager
+    this.networkManager = new NetworkManager(this.scene);
+    this.networkManager.onRemoteNetDeployed = (pos, norm) => {
+      this.pulseNetManager.deployNet(
+        new THREE.Vector3(...pos),
+        new THREE.Vector3(...norm),
+        'player2',
+        0xff007f
+      );
+      this.triggerLevelDispositionShift();
+    };
+    this.networkManager.onRemoteDispositionShift = () => {
+      this.triggerLevelDispositionShift();
+    };
+    this.networkManager.onRemotePulseFired = (pos, dir) => {
+      // Render remote projectile in scene
+      const startPos = new THREE.Vector3(...pos);
+      const velocity = new THREE.Vector3(...dir).multiplyScalar(40);
+      const geom = new THREE.OctahedronGeometry(0.06, 0);
+      const line = new THREE.LineSegments(
+        new THREE.EdgesGeometry(geom),
+        new THREE.LineBasicMaterial({ color: 0xff007f, linewidth: 2 })
+      );
+      line.position.copy(startPos);
+      this.scene.add(line);
+      this.player.projectiles.push({
+        position: startPos,
+        velocity,
+        life: 0,
+        maxLife: 2.0,
+        mesh: line,
+      });
+    };
+
+    // Forward local pulse net deployments to network
+    this.player.onPulseNetDeployed = (pos, normal) => {
+      this.networkManager.sendNetDeployed(pos, normal);
+    };
+
+    // Initialize Crawler Bots Manager
     this.crawlerBotsManager = new CrawlerBotsManager(this.scene);
     this.crawlerBotsManager.initBots(this.runnerCount);
     this.player.onCheckProjectileHit = (pos) => this.crawlerBotsManager.checkPulseHit(pos, this.stats);
@@ -165,8 +218,33 @@ export class WireScene {
     };
   }
 
+  /**
+   * Triggers when a crawler lays a pulse net:
+   * Level disposition dynamically changes! Shifting gates re-route, rotating platforms speed up/flip,
+   * opening alternate passages and changing the labyrinth map layout!
+   */
+  public triggerLevelDispositionShift(): void {
+    this.isDispositionShifted = true;
+    this.dispositionTimer = 9.0; // 9 seconds altered map disposition
+
+    // Toggle disposition gates open
+    ['gate_disp_1', 'gate_disp_2', 'gate_disp_3', 'gate_secret'].forEach((gateId) => {
+      const gate = this.mazeData.shiftingGates.find((g) => g.id === gateId);
+      if (gate) {
+        gate.isOpen = true;
+      }
+    });
+
+    // Speed up rotating platforms
+    for (const plat of this.mazeData.rotatingPlatforms) {
+      plat.rotationSpeed *= -1.5; // Reverse and accelerate rotation
+    }
+
+    // Screen shake resonance
+    soundSynth.playLevelShift();
+  }
+
   private initParticles(): void {
-    // Floating cyber dust specks throughout the labyrinth
     const count = 400;
     const geometry = new THREE.BufferGeometry();
     const positions = new Float32Array(count * 3);
@@ -181,7 +259,7 @@ export class WireScene {
 
     const material = new THREE.PointsMaterial({
       color: 0x88bbff,
-      size: 0.12,
+      size: 0.1,
       transparent: true,
       opacity: 0.65,
       blending: THREE.AdditiveBlending,
@@ -196,7 +274,16 @@ export class WireScene {
     window.addEventListener('keydown', this.onKeyDown);
     window.addEventListener('keyup', this.onKeyUp);
     window.addEventListener('blur', this.onBlur);
+    this.renderer.domElement.addEventListener('contextmenu', this.onContextMenu);
   }
+
+  private onContextMenu = (e: MouseEvent): void => {
+    e.preventDefault();
+    if (this.gameState === 'playing') {
+      // Right click deploys temporary Pulse Net!
+      this.deployPulseNet();
+    }
+  };
 
   private onResize = (): void => {
     if (!this.container || !this.renderer || !this.camera) return;
@@ -246,7 +333,7 @@ export class WireScene {
     if (key === 'KeyA' || key === 'ArrowLeft') this.heldKeys.left = true;
     if (key === 'KeyD' || key === 'ArrowRight') this.heldKeys.right = true;
 
-    // Jump
+    // Jump / Wall Leap
     if (key === 'Space') {
       const nearBeat = soundSynth.getBeatProgress().isNearBeat;
       this.player.queueJump(nearBeat);
@@ -264,14 +351,14 @@ export class WireScene {
       this.player.triggerDash(x, z, nearBeat);
     }
 
-    // Pulse action
+    // Fire Pulse weapon
     if (key === 'KeyF') {
-      this.player.firePulse(this.scene);
+      this.firePulse();
     }
 
-    // Camera view toggle (1st person cockpit vs 3rd person spider crawler view)
-    if (key === 'KeyV') {
-      this.toggleCameraView();
+    // Deploy Temporary Pulse Net ("disable walkthrough net & change level disposition")
+    if (key === 'KeyE') {
+      this.deployPulseNet();
     }
   };
 
@@ -284,7 +371,6 @@ export class WireScene {
   };
 
   private onBlur = (): void => {
-    // Clear all held inputs on window blur to avoid stuck movement
     this.heldKeys.forward = false;
     this.heldKeys.backward = false;
     this.heldKeys.left = false;
@@ -299,11 +385,24 @@ export class WireScene {
       if (document.pointerLockElement !== this.renderer.domElement) {
         this.requestPointerLock();
       } else {
-        // Fire pulse weapon/tool on click!
-        this.player.firePulse(this.scene);
+        // Left click fires pulse blaster!
+        this.firePulse();
       }
     }
   };
+
+  public firePulse(): void {
+    if (this.gameState !== 'playing') return;
+    this.player.firePulse(this.scene);
+    const dir = new THREE.Vector3();
+    this.camera.getWorldDirection(dir);
+    this.networkManager.sendPulseFired(this.player.position, dir);
+  }
+
+  public deployPulseNet(): void {
+    if (this.gameState !== 'playing') return;
+    this.player.deployPulseNet(this.pulseNetManager);
+  }
 
   public requestPointerLock(): void {
     this.renderer.domElement.requestPointerLock();
@@ -324,6 +423,7 @@ export class WireScene {
     this.stats.score = 0;
     this.stats.beatCombo = 0;
     this.crawlerBotsManager?.initBots(this.runnerCount);
+    this.pulseNetManager?.clear();
     this.onStateTransition?.('playing');
     this.requestPointerLock();
   }
@@ -336,7 +436,7 @@ export class WireScene {
   }
 
   public restartSector(): void {
-    const cp = this.mazeData.checkpoints.find(c => c.sectorIndex === this.stats.currentSector);
+    const cp = this.mazeData.checkpoints.find((c) => c.sectorIndex === this.stats.currentSector);
     if (cp) {
       this.player.setSpawnPosition(cp.position, 0);
     }
@@ -348,7 +448,6 @@ export class WireScene {
   }
 
   public restartGame(): void {
-    // Reset all checkpoints except starting one
     this.mazeData.checkpoints.forEach((cp, idx) => {
       cp.activated = idx === 0;
       const mesh = this.mazeData.animatedMeshes.checkpointMeshes.get(cp.id);
@@ -358,14 +457,12 @@ export class WireScene {
       }
     });
 
-    // Reset cubes
-    this.mazeData.chronocubes.forEach(c => {
+    this.mazeData.chronocubes.forEach((c) => {
       c.collected = false;
       const mesh = this.mazeData.animatedMeshes.cubeMeshes.get(c.id);
       if (mesh) mesh.visible = true;
     });
 
-    // Reset stats
     this.stats.elapsedTime = 0;
     this.stats.health = this.stats.maxHealth;
     this.stats.cubesCollected = 0;
@@ -376,17 +473,10 @@ export class WireScene {
 
     this.player.setSpawnPosition([0, 0, 5], 0);
     this.crawlerBotsManager?.initBots(this.runnerCount);
+    this.pulseNetManager?.clear();
     this.gameState = 'playing';
     this.onStateTransition?.('playing');
     this.requestPointerLock();
-  }
-
-  public toggleCameraView(): 'first' | 'third' {
-    return this.player.toggleCameraMode();
-  }
-
-  public getCameraView(): 'first' | 'third' {
-    return this.player.cameraMode;
   }
 
   public setRunnerCount(count: number): void {
@@ -399,7 +489,7 @@ export class WireScene {
   private startLoop(): void {
     const tick = () => {
       const rawDt = this.clock.getDelta();
-      const dt = Math.min(rawDt, 0.05); // Clamp frame delta time as mandated
+      const dt = Math.min(rawDt, 0.05);
 
       this.update(dt);
       this.renderer.render(this.scene, this.camera);
@@ -414,20 +504,20 @@ export class WireScene {
     const time = this.clock.getElapsedTime();
     const beatInfo = soundSynth.getBeatProgress();
 
-    // 1. Title mode camera pan vs FPS playing mode
+    // 1. Camera mode: Title vs FPS playing mode
     if (this.gameState === 'title') {
       this.titleCamAngle += dt * 0.18;
-      // Atmospheric live flythrough around Sector 1 / Pulse Labyrinth
       const camX = Math.sin(this.titleCamAngle) * 16;
       const camZ = -20 + Math.cos(this.titleCamAngle * 0.5) * 45;
-      const camY = 4 + Math.sin(this.titleCamAngle * 2) * 1.5;
+      const camY = 3.5 + Math.sin(this.titleCamAngle * 2) * 1.5;
 
       this.camera.position.set(camX, camY, camZ);
-      this.camera.lookAt(0, 3, camZ - 30);
+      this.camera.lookAt(0, 2, camZ - 30);
     } else if (this.gameState === 'playing') {
       this.stats.elapsedTime += dt;
       this.stats.score += Math.round(dt * 10 * (1 + this.stats.beatCombo * 0.1));
 
+      // Player update with wall-walking, collision, and pulse nets
       this.player.update(
         dt,
         {
@@ -438,7 +528,8 @@ export class WireScene {
         this.mazeData,
         this.settings,
         this.stats,
-        this.scene
+        this.scene,
+        this.pulseNetManager
       );
 
       // Update bot runners and hazard crawlers
@@ -457,29 +548,66 @@ export class WireScene {
             } else {
               this.onStatsUpdate?.({ ...this.stats });
             }
-          }
+          },
+          this.pulseNetManager
         );
+      }
+
+      // Update active pulse nets
+      this.pulseNetManager.update(dt, this.mazeData, time);
+
+      // Level Disposition Shift timer
+      if (this.isDispositionShifted) {
+        this.dispositionTimer -= dt;
+        if (this.dispositionTimer <= 0) {
+          this.isDispositionShifted = false;
+          // Normalize platform speeds back to standard
+          for (const plat of this.mazeData.rotatingPlatforms) {
+            plat.rotationSpeed = Math.sign(plat.rotationSpeed) * Math.abs(plat.rotationSpeed / 1.5);
+          }
+        }
+      }
+
+      // Broadcast local player state over network
+      if (this.networkManager.isConnected) {
+        this.networkManager.update(dt, {
+          id: 'local',
+          position: [this.player.position.x, this.player.position.y, this.player.position.z],
+          yaw: this.player.yaw,
+          pitch: this.player.pitch,
+          surfaceNormal: [this.player.surfaceNormal.x, this.player.surfaceNormal.y, this.player.surfaceNormal.z],
+          speed: this.player.velocity.length(),
+          isGrounded: this.player.isGrounded || this.player.isWallWalking,
+          health: this.stats.health,
+          score: this.stats.score,
+          checkpointSector: this.stats.currentSector,
+        });
       }
 
       this.onStatsUpdate?.({ ...this.stats });
     }
 
-    // 2. Animate Shifting Maze Gates
+    // 2. Animate Rotating Platforms
+    for (const plat of this.mazeData.rotatingPlatforms) {
+      plat.currentAngle += plat.rotationSpeed * dt;
+      const meshObj = this.mazeData.animatedMeshes.rotatingPlatformMeshes.get(plat.id);
+      if (meshObj) {
+        meshObj.group.rotation[plat.axis] = plat.currentAngle;
+      }
+    }
+
+    // 3. Animate Shifting Maze Gates
     for (const gate of this.mazeData.shiftingGates) {
       const mesh = this.mazeData.animatedMeshes.gateMeshes.get(gate.id);
       if (!mesh) continue;
 
       if (gate.isOpen) {
-        // Switch-triggered gate: slide open smoothly
         mesh.position.y = THREE.MathUtils.damp(mesh.position.y, gate.position[1] + gate.openOffset, 4, dt);
       } else {
-        // Rhythmic cycling gates
         const cycleProgress = (time + gate.phaseOffsetSeconds) % gate.cycleIntervalSeconds;
         const normalized = cycleProgress / gate.cycleIntervalSeconds;
-        // Open for ~40% of cycle, closed for ~60%
         const openFactor = Math.sin(normalized * Math.PI * 2);
         const isOpen = openFactor > 0.15;
-
         const targetOffset = isOpen ? gate.openOffset : 0;
 
         if (gate.direction === 'up') {
@@ -490,7 +618,7 @@ export class WireScene {
       }
     }
 
-    // 3. Animate Phase Platforms (Cyan on odd beats, Magenta on even beats)
+    // 4. Animate Phase Platforms
     const isOddBeat = Math.floor(beatInfo.beat) % 2 === 1;
     for (const plat of this.mazeData.phasePlatforms) {
       const isActive = plat.phase === 'odd' ? isOddBeat : !isOddBeat;
@@ -500,64 +628,50 @@ export class WireScene {
       if (platMesh) {
         const targetOpacity = isActive ? 1.0 : 0.12;
         const targetFill = isActive ? 0.9 : 0.05;
-        const lineMat = platMesh.lines.material as THREE.LineBasicMaterial;
-        const fillMat = platMesh.fill.material as THREE.MeshStandardMaterial;
-        lineMat.opacity = THREE.MathUtils.damp(lineMat.opacity, targetOpacity, 14, dt);
-        fillMat.opacity = THREE.MathUtils.damp(fillMat.opacity, targetFill, 14, dt);
+        (platMesh.lines.material as THREE.LineBasicMaterial).opacity = THREE.MathUtils.damp(
+          (platMesh.lines.material as THREE.LineBasicMaterial).opacity,
+          targetOpacity,
+          16,
+          dt
+        );
+        (platMesh.fill.material as THREE.MeshStandardMaterial).opacity = THREE.MathUtils.damp(
+          (platMesh.fill.material as THREE.MeshStandardMaterial).opacity,
+          targetFill,
+          16,
+          dt
+        );
       }
     }
 
-    // 4. Animate Checkpoints
-    for (const cp of this.mazeData.checkpoints) {
-      const cpMesh = this.mazeData.animatedMeshes.checkpointMeshes.get(cp.id);
-      if (cpMesh) {
-        cpMesh.rings.rotation.y += dt * 0.8;
-        cpMesh.rings.rotation.x = Math.sin(time * 2) * 0.15;
-        // Subtle rhythmic pulse on point light
-        const baseInt = cp.activated ? 4 : 1;
-        cpMesh.pointLight.intensity = baseInt + Math.sin(beatInfo.phase * Math.PI * 2) * (cp.activated ? 1.5 : 0.4);
-      }
-    }
-
-    // 5. Animate Jump Pad rings
+    // 5. Animate Jump Pads
     for (const pad of this.mazeData.jumpPads) {
       const padMesh = this.mazeData.animatedMeshes.jumpPadMeshes.get(pad.id);
       if (padMesh) {
-        // Expand ring with beat phase
-        const scale = 0.8 + beatInfo.phase * 0.5;
-        padMesh.ring.scale.set(scale, scale, scale);
+        const pulse = 1 + Math.sin(beatInfo.phase * Math.PI * 2) * 0.15;
+        padMesh.ring.scale.set(pulse, 1, pulse);
       }
     }
 
     // 6. Animate Chronocubes
     for (const cube of this.mazeData.chronocubes) {
-      const cubeMesh = this.mazeData.animatedMeshes.cubeMeshes.get(cube.id);
-      if (cubeMesh && cubeMesh.visible) {
-        cubeMesh.rotation.x += dt * 1.5;
-        cubeMesh.rotation.y += dt * 2.2;
-        cubeMesh.position.y = cube.position[1] + Math.sin(time * 3 + cube.position[2]) * 0.25;
+      if (cube.collected) continue;
+      const mesh = this.mazeData.animatedMeshes.cubeMeshes.get(cube.id);
+      if (mesh) {
+        mesh.rotation.x += dt * 1.5;
+        mesh.rotation.y += dt * 2.0;
+        mesh.position.y = cube.position[1] + Math.sin(time * 3 + cube.position[2]) * 0.25;
       }
     }
 
-    // 7. Animate Switches
-    for (const sw of this.mazeData.switches) {
-      const swMesh = this.mazeData.animatedMeshes.switchMeshes.get(sw.id);
-      if (swMesh) {
-        swMesh.rotation.y += dt * (sw.activated ? 4 : 1.2);
-        swMesh.rotation.z += dt * 0.8;
-      }
-    }
-
-    // 8. Animate Extraction Core Beacon
+    // 7. Animate Prismatic Core
     if (this.mazeData.animatedMeshes.coreMesh) {
       const core = this.mazeData.animatedMeshes.coreMesh;
-      core.rotation.x += dt * 0.7;
-      core.rotation.y += dt * 1.1;
-      core.rotation.z += dt * 0.5;
-      core.position.y = 7.5 + Math.sin(time * 2) * 0.4;
+      core.rotation.y += dt * 1.2;
+      core.rotation.x = Math.sin(time * 0.8) * 0.3;
+      core.position.y = 7.5 + Math.sin(time * 2) * 0.5;
     }
 
-    // 9. Animate Dust particles
+    // 8. Animate ambient cyber dust particles
     if (this.dustParticles) {
       const posAttr = this.dustParticles.geometry.attributes.position as THREE.BufferAttribute;
       const arr = posAttr.array as Float32Array;
@@ -577,8 +691,11 @@ export class WireScene {
     window.removeEventListener('keydown', this.onKeyDown);
     window.removeEventListener('keyup', this.onKeyUp);
     window.removeEventListener('blur', this.onBlur);
+    this.renderer.domElement.removeEventListener('contextmenu', this.onContextMenu);
 
     soundSynth.stopMusic();
+    this.networkManager.cleanup();
+    this.pulseNetManager.clear();
 
     this.scene.clear();
     this.renderer.dispose();
@@ -611,8 +728,10 @@ export class WireScene {
   }
 
   public handleTouchPulse(): void {
-    if (this.gameState === 'playing') {
-      this.player.firePulse(this.scene);
-    }
+    this.firePulse();
+  }
+
+  public handleTouchNet(): void {
+    this.deployPulseNet();
   }
 }

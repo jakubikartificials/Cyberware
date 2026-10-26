@@ -1,12 +1,14 @@
 /**
  * CYBERWIRE: Maze Runner 3D
- * Low-poly wireframe first-person labyrinth runner with rhythmic platforming and neon checkpoints
+ * Low-poly wireframe first-person micro-crawler labyrinth runner
+ * Features: 4x scaled micro-crawler, wall-walking physics, temporary pulse nets that disable walkthrough & alter level disposition,
+ * rotating cog platforms, and real-time 2-player WebRTC peer-to-peer multiplayer.
  * @license Apache-2.0
  */
 
 import { useEffect, useRef, useState } from 'react';
 import { WireScene } from './game/rendering/WireScene';
-import { GameDifficulty, GameSettings, GameState, PlayerStats } from './game/types';
+import { GameDifficulty, GameSettings, GameState, PlayerStats, MultiplayerPlayerState } from './game/types';
 import { soundSynth } from './game/audio/SoundSynth';
 import { TitleScreen } from './game/ui/TitleScreen';
 import { HUDOverlay } from './game/ui/HUDOverlay';
@@ -56,9 +58,20 @@ export default function App() {
   const [settings, setSettings] = useState<GameSettings>(DEFAULT_SETTINGS);
   const [difficulty, setDifficulty] = useState<GameDifficulty>('standard');
   const [runnerCount, setRunnerCount] = useState<number>(4);
-  const [cameraMode, setCameraMode] = useState<'first' | 'third'>('third');
   const [bannerNotification, setBannerNotification] = useState<string | null>(null);
   const bannerTimerRef = useRef<number | null>(null);
+
+  // Wall-walking and Pulse Net HUD State
+  const [isWallWalking, setIsWallWalking] = useState<boolean>(false);
+  const [pulseNetCooldown, setPulseNetCooldown] = useState<number>(0);
+
+  // 2-Player Online State
+  const [onlineRoomCode, setOnlineRoomCode] = useState<string>('');
+  const [isOnlineConnecting, setIsOnlineConnecting] = useState<boolean>(false);
+  const [onlineError, setOnlineError] = useState<string | null>(null);
+  const [isMultiplayerConnected, setIsMultiplayerConnected] = useState<boolean>(false);
+  const [multiplayerPing, setMultiplayerPing] = useState<number>(0);
+  const [remotePlayerState, setRemotePlayerState] = useState<MultiplayerPlayerState | null>(null);
 
   // Best speedrun record from localStorage
   const [bestTime, setBestTime] = useState<number | null>(() => {
@@ -145,16 +158,13 @@ export default function App() {
         onStateTransition: (newState) => {
           setGameState(newState);
           if (newState === 'victory') {
-            // Check record
             const currentRecord = bestTime;
             if (currentRecord === null || stats.elapsedTime < currentRecord) {
               setBestTime(stats.elapsedTime);
               setIsNewBest(true);
               try {
                 localStorage.setItem('cyberwire_best_time', stats.elapsedTime.toString());
-              } catch {
-                // Ignore storage error
-              }
+              } catch {}
             } else {
               setIsNewBest(false);
             }
@@ -163,9 +173,34 @@ export default function App() {
       }
     );
 
+    // Setup network callbacks
+    scene.networkManager.onConnectionEstablished = () => {
+      setIsMultiplayerConnected(true);
+      setIsOnlineConnecting(false);
+      setOnlineError(null);
+    };
+
+    scene.networkManager.onConnectionLost = () => {
+      setIsMultiplayerConnected(false);
+    };
+
     wireSceneRef.current = scene;
 
+    // Fast interval to sync wall-walking & cooldown states into React HUD
+    const hudSyncInterval = window.setInterval(() => {
+      if (wireSceneRef.current) {
+        setIsWallWalking(wireSceneRef.current.player.isWallWalking);
+        setPulseNetCooldown(wireSceneRef.current.player.pulseNetCooldown);
+        if (wireSceneRef.current.networkManager.isConnected) {
+          setIsMultiplayerConnected(true);
+          setMultiplayerPing(wireSceneRef.current.networkManager.pingMs);
+          setRemotePlayerState(wireSceneRef.current.networkManager.remoteState);
+        }
+      }
+    }, 100);
+
     return () => {
+      clearInterval(hudSyncInterval);
       scene.dispose();
       wireSceneRef.current = null;
     };
@@ -182,7 +217,6 @@ export default function App() {
         currentSector: sector,
       }));
 
-      // Show checkpoint announcement banner
       setBannerNotification(name);
       if (bannerTimerRef.current) clearTimeout(bannerTimerRef.current);
       bannerTimerRef.current = window.setTimeout(() => {
@@ -191,16 +225,53 @@ export default function App() {
     };
   }, []);
 
-  // Apply difficulty adjustments
+  // 2-Player Online Handlers
+  const handleHostOnline = () => {
+    if (!wireSceneRef.current) return;
+    setIsOnlineConnecting(true);
+    setOnlineError(null);
+
+    wireSceneRef.current.networkManager.hostRoom(
+      (code) => {
+        setOnlineRoomCode(code);
+        setIsOnlineConnecting(false);
+      },
+      (err) => {
+        setOnlineError(err);
+        setIsOnlineConnecting(false);
+      }
+    );
+  };
+
+  const handleJoinOnline = (code: string) => {
+    if (!wireSceneRef.current) return;
+    setIsOnlineConnecting(true);
+    setOnlineError(null);
+
+    wireSceneRef.current.networkManager.joinRoom(
+      code,
+      () => {
+        setIsMultiplayerConnected(true);
+        setIsOnlineConnecting(false);
+        setGameState('playing');
+        wireSceneRef.current?.startGame();
+      },
+      (err) => {
+        setOnlineError(err);
+        setIsOnlineConnecting(false);
+      }
+    );
+  };
+
   const handleSetDifficulty = (diff: GameDifficulty) => {
     setDifficulty(diff);
     if (!wireSceneRef.current) return;
     if (diff === 'zen') {
-      wireSceneRef.current.mazeData.lasers.forEach(l => l.damage = 0);
+      wireSceneRef.current.mazeData.lasers.forEach((l) => (l.damage = 0));
     } else if (diff === 'hyper') {
-      wireSceneRef.current.mazeData.lasers.forEach(l => l.damage = 40);
+      wireSceneRef.current.mazeData.lasers.forEach((l) => (l.damage = 40));
     } else {
-      wireSceneRef.current.mazeData.lasers.forEach(l => l.damage = 25);
+      wireSceneRef.current.mazeData.lasers.forEach((l) => (l.damage = 25));
     }
   };
 
@@ -245,27 +316,20 @@ export default function App() {
 
   const handleToggleMute = () => {
     const isMuted = soundSynth.toggleMute();
-    setSettings(prev => ({ ...prev, muted: isMuted }));
+    setSettings((prev) => ({ ...prev, muted: isMuted }));
     if (wireSceneRef.current) {
       wireSceneRef.current.settings.muted = isMuted;
     }
   };
 
   const handleUpdateSettings = (newSettings: Partial<GameSettings>) => {
-    setSettings(prev => {
+    setSettings((prev) => {
       const merged = { ...prev, ...newSettings };
       if (wireSceneRef.current) {
         wireSceneRef.current.settings = merged;
       }
       return merged;
     });
-  };
-
-  const handleToggleCamera = () => {
-    if (wireSceneRef.current) {
-      const nextMode = wireSceneRef.current.toggleCameraView();
-      setCameraMode(nextMode);
-    }
   };
 
   const handleSetRunnerCount = (count: number) => {
@@ -285,10 +349,10 @@ export default function App() {
         wireSceneRef.current?.handleMouseMove(e.nativeEvent);
       }}
     >
-      {/* Isolated Three.js Canvas Container: Never re-rendered by React state updates */}
+      {/* Three.js Canvas Container */}
       <div ref={canvasMountRef} className="absolute inset-0 w-full h-full cursor-crosshair z-0" />
 
-      {/* Subtle Retro Scanline Overlay (pure pointer-events-none) */}
+      {/* Retro Scanline Overlay */}
       {settings.showScanlines && (
         <div className="absolute inset-0 pointer-events-none crt-grid opacity-35 z-[1]" />
       )}
@@ -314,6 +378,11 @@ export default function App() {
           bestTime={bestTime}
           isFullscreen={isFullscreen}
           onToggleFullscreen={handleToggleFullscreen}
+          onHostOnline={handleHostOnline}
+          onJoinOnline={handleJoinOnline}
+          onlineRoomCode={onlineRoomCode}
+          isOnlineConnecting={isOnlineConnecting}
+          onlineError={onlineError}
         />
       )}
 
@@ -334,8 +403,11 @@ export default function App() {
             isTouchControls={shouldShowTouch}
             isFullscreen={isFullscreen}
             onToggleFullscreen={handleToggleFullscreen}
-            cameraMode={cameraMode}
-            onToggleCamera={handleToggleCamera}
+            isWallWalking={isWallWalking}
+            pulseNetCooldown={pulseNetCooldown}
+            isMultiplayerConnected={isMultiplayerConnected}
+            multiplayerPing={multiplayerPing}
+            remotePlayerState={remotePlayerState}
           />
 
           {shouldShowTouch && (
@@ -358,6 +430,9 @@ export default function App() {
               onPulse={() => {
                 wireSceneRef.current?.handleTouchPulse();
               }}
+              onNet={() => {
+                wireSceneRef.current?.handleTouchNet();
+              }}
               onPause={() => {
                 if (wireSceneRef.current) {
                   wireSceneRef.current.gameState = 'paused';
@@ -368,8 +443,6 @@ export default function App() {
               dashCharge={stats.dashCharge}
               isFullscreen={isFullscreen}
               onToggleFullscreen={handleToggleFullscreen}
-              cameraMode={cameraMode}
-              onToggleCamera={handleToggleCamera}
             />
           )}
         </>
@@ -387,8 +460,6 @@ export default function App() {
           stats={stats}
           isFullscreen={isFullscreen}
           onToggleFullscreen={handleToggleFullscreen}
-          cameraMode={cameraMode}
-          onToggleCamera={handleToggleCamera}
           runnerCount={runnerCount}
           onSetRunnerCount={handleSetRunnerCount}
         />

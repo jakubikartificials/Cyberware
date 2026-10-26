@@ -93,6 +93,41 @@ export interface PlayerStats {
   score: number;
 }
 
+export interface RotatingPlatform {
+  id: string;
+  position: [number, number, number];
+  size: [number, number, number];
+  rotationSpeed: number; // radians per second
+  axis: 'x' | 'y' | 'z';
+  currentAngle: number;
+  colorHex: number;
+}
+
+export interface PulseNetData {
+  id: string;
+  position: [number, number, number];
+  normal: [number, number, number];
+  width: number;
+  height: number;
+  duration: number;
+  maxDuration: number;
+  colorHex: number;
+  ownerId: string;
+}
+
+export interface MultiplayerPlayerState {
+  id: string;
+  position: [number, number, number];
+  yaw: number;
+  pitch: number;
+  surfaceNormal: [number, number, number];
+  speed: number;
+  isGrounded: boolean;
+  health: number;
+  score: number;
+  checkpointSector: number;
+}
+
 export interface GameSettings {
   mouseSensitivity: number;
   soundVolume: number;
@@ -103,3 +138,4 @@ export interface GameSettings {
   showScanlines: boolean;
   touchControls: 'auto' | 'on' | 'off';
 }
+

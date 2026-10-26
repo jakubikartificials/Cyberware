@@ -28,6 +28,15 @@ export interface MazeData {
   lasers: RhythmicLaser[];
   chronocubes: Chronocube[];
   switches: SwitchTarget[];
+  rotatingPlatforms: {
+    id: string;
+    position: [number, number, number];
+    size: [number, number, number];
+    rotationSpeed: number;
+    axis: 'x' | 'y' | 'z';
+    currentAngle: number;
+    colorHex: number;
+  }[];
   // References to meshes that update every frame
   animatedMeshes: {
     gateMeshes: Map<string, THREE.Group>;
@@ -37,6 +46,7 @@ export interface MazeData {
     jumpPadMeshes: Map<string, { group: THREE.Group; ring: THREE.LineSegments }>;
     laserMeshes: Map<string, THREE.LineSegments>;
     switchMeshes: Map<string, THREE.Group>;
+    rotatingPlatformMeshes: Map<string, { group: THREE.Group; rotationSpeed: number; axis: 'x' | 'y' | 'z' }>;
     coreMesh?: THREE.Group;
   };
 }
@@ -85,6 +95,15 @@ export class MazeBuilder {
     const lasers: RhythmicLaser[] = [];
     const chronocubes: Chronocube[] = [];
     const switches: SwitchTarget[] = [];
+    const rotatingPlatforms: {
+      id: string;
+      position: [number, number, number];
+      size: [number, number, number];
+      rotationSpeed: number;
+      axis: 'x' | 'y' | 'z';
+      currentAngle: number;
+      colorHex: number;
+    }[] = [];
 
     const animatedMeshes = {
       gateMeshes: new Map<string, THREE.Group>(),
@@ -94,6 +113,7 @@ export class MazeBuilder {
       jumpPadMeshes: new Map<string, { group: THREE.Group; ring: THREE.LineSegments }>(),
       laserMeshes: new Map<string, THREE.LineSegments>(),
       switchMeshes: new Map<string, THREE.Group>(),
+      rotatingPlatformMeshes: new Map<string, { group: THREE.Group; rotationSpeed: number; axis: 'x' | 'y' | 'z' }>(),
       coreMesh: undefined as THREE.Group | undefined,
     };
 
@@ -330,6 +350,81 @@ export class MazeBuilder {
       });
     };
 
+    // Helper: Add Low-Poly Rotating Wire Platform
+    const addRotatingPlatform = (
+      id: string,
+      pos: [number, number, number],
+      radius: number = 3.5,
+      speed: number = 0.8,
+      axis: 'x' | 'y' | 'z' = 'y',
+      colorHex: number = 0x00f0ff
+    ) => {
+      rotatingPlatforms.push({
+        id,
+        position: pos,
+        size: [radius * 2, 0.4, radius * 2],
+        rotationSpeed: speed,
+        axis,
+        currentAngle: 0,
+        colorHex,
+      });
+
+      const group = new THREE.Group();
+      group.position.set(pos[0], pos[1], pos[2]);
+
+      // Hexagonal low-poly wire cylinder cog
+      const geom = new THREE.CylinderGeometry(radius, radius, 0.35, 6);
+      const mesh = new THREE.Mesh(geom, this.darkWallMat);
+      group.add(mesh);
+
+      const edgeGeom = new THREE.EdgesGeometry(geom);
+      const edgeLine = new THREE.LineSegments(
+        edgeGeom,
+        new THREE.LineBasicMaterial({ color: colorHex, linewidth: 2 })
+      );
+      group.add(edgeLine);
+
+      // Low poly spokes
+      const spokeGeom = new THREE.BufferGeometry();
+      const spokePts: THREE.Vector3[] = [];
+      for (let s = 0; s < 6; s++) {
+        const ang = (s * Math.PI) / 3;
+        spokePts.push(
+          new THREE.Vector3(0, 0.18, 0),
+          new THREE.Vector3(Math.cos(ang) * radius, 0.18, Math.sin(ang) * radius)
+        );
+      }
+      spokeGeom.setFromPoints(spokePts);
+      const spokeLine = new THREE.LineSegments(spokeGeom, new THREE.LineBasicMaterial({ color: 0xffffff }));
+      group.add(spokeLine);
+
+      // Central core node
+      const centerCore = new THREE.Mesh(
+        new THREE.OctahedronGeometry(0.3, 0),
+        new THREE.MeshBasicMaterial({ color: colorHex, wireframe: true })
+      );
+      centerCore.position.y = 0.3;
+      group.add(centerCore);
+
+      root.add(group);
+
+      // Add dynamic collider covering the rotating platform
+      colliders.push({
+        minX: pos[0] - radius * 0.9,
+        maxX: pos[0] + radius * 0.9,
+        minY: pos[1] - 0.2,
+        maxY: pos[1] + 0.25,
+        minZ: pos[2] - radius * 0.9,
+        maxZ: pos[2] + radius * 0.9,
+      });
+
+      animatedMeshes.rotatingPlatformMeshes.set(id, {
+        group,
+        rotationSpeed: speed,
+        axis,
+      });
+    };
+
     // Helper: Add Shifting Maze Gate (Towering Maze Runner door)
     const addShiftingGate = (
       id: string,
@@ -546,9 +641,14 @@ export class MazeBuilder {
     addShiftingGate('gate_secret', [0, 3, -130], [8, 6, 1.2], 6, 'up', 999999, 0, 0x00f0ff);
 
     // Alternate route with Rhythmic Phase Platforms over void
-    // Void gap from Z: -130 to -160
+    // Void gap from Z: -130 to -160 with Rotating Cog Platform and Phase Platforms
     addFloor(-8, -12, -145, 16, 30); // Low void pit
     addFloor(8, -12, -145, 16, 30);
+    // Rotating Platform 1: Colossal spinning wire hexagon over the chasm
+    addRotatingPlatform('rot_plat_1', [0, 1.2, -145], 4.5, 0.85, 'y', 0x00f0ff);
+    // Dynamic Level Disposition Shifting Gate: triggers on pulse net deploy
+    addShiftingGate('gate_disp_1', [0, 3.5, -155], [12, 6, 1.2], 6, 'up', 999999, 0, 0x00f0ff);
+
     // Phase Platforms: Odd beats (Cyan) vs Even beats (Magenta)
     addPhasePlatform('phase_1', [-2, 0, -136], [4, 0.4, 4], 'odd');
     addPhasePlatform('phase_2', [2, 1.5, -144], [4, 0.4, 4], 'even');
@@ -576,10 +676,15 @@ export class MazeBuilder {
     // Boost Pad to reach high ledge
     addJumpPad('pad_shaft_1', [0, 5.15, -198], 22, 0xffaa00);
 
-    // High elevated wire walkway (Y: 12)
+    // High elevated wire walkway (Y: 12) with Rotating Cog and Wall Runway
     addFloor(0, 12, -215, 8, 24);
     addWall(-4, 15, -215, 1, 6, 24);
     addWall(4, 15, -215, 1, 6, 24);
+
+    // Rotating Platform 2: Kinetic Amber Hex-Gear in vertical shaft
+    addRotatingPlatform('rot_plat_2', [0, 12, -204], 3.8, -0.9, 'y', 0xffaa00);
+    // Dynamic Level Disposition Shifting Gate 2
+    addShiftingGate('gate_disp_2', [0, 14, -220], [8, 5, 1.2], 5, 'up', 999999, 0, 0xffaa00);
 
     // Laser barrier on high walkway
     addLaser('laser_3', [-3.8, 13.5, -212], [3.8, 13.5, -212], [0, 2], 0xffaa00);
@@ -608,6 +713,11 @@ export class MazeBuilder {
     addShiftingGate('gate_final_1', [0, 7.5, -270], [15, 7, 1.5], 7, 'up', 4, 0, 0x00ff96);
     addShiftingGate('gate_final_2', [0, 7.5, -282], [15, 7, 1.5], 7, 'up', 4, 1, 0x00ff96);
     addShiftingGate('gate_final_3', [0, 7.5, -294], [15, 7, 1.5], 7, 'up', 4, 2, 0x00ff96);
+
+    // Rotating Platform 3: Grand Emerald Hex Platform before Core
+    addRotatingPlatform('rot_plat_3', [0, 4.2, -305], 5.2, 1.1, 'y', 0x00ff96);
+    // Dynamic Level Disposition Shifting Gate 3
+    addShiftingGate('gate_disp_3', [0, 6.5, -315], [14, 6.5, 1.5], 6.5, 'up', 999999, 0, 0x00ff96);
 
     // Mid-gauntlet Jump Pad
     addJumpPad('pad_final_boost', [0, 4.15, -288], 22, 0x00ff96);
@@ -672,6 +782,7 @@ export class MazeBuilder {
       lasers,
       chronocubes,
       switches,
+      rotatingPlatforms,
       animatedMeshes,
     };
   }

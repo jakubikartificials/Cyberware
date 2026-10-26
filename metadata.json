@@ -1,6 +1,6 @@
 {
   "name": "CYBERWIRE: Maze Runner 3D",
-  "description": "A rhythmic low-poly wireframe 3D FPS maze runner featuring pulse-synchronized platforming, glowing neon checkpoints, and dynamic synth mechanics.",
+  "description": "A rhythmic low-poly wireframe 3D FPS micro-crawler labyrinth runner featuring 4x smaller crawler scale, wall-walking, pulse nets, rotating cog platforms, and 2-player online multiplayer.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

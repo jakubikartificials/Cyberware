@@ -1,6 +1,5 @@
-import React from 'react';
 import { GameSettings, PlayerStats } from '../types';
-import { Play, RotateCcw, Home, Volume2, VolumeX, Eye, Gauge, Smartphone, Maximize, Minimize, Camera, Users } from 'lucide-react';
+import { Play, RotateCcw, Home, Volume2, VolumeX, Eye, Gauge, Smartphone, Maximize, Minimize, Users } from 'lucide-react';
 import { PWAInstallButton } from '../pwa/PWAInstallButton';
 
 interface PauseModalProps {
@@ -14,8 +13,6 @@ interface PauseModalProps {
   stats: PlayerStats;
   isFullscreen?: boolean;
   onToggleFullscreen?: () => void;
-  cameraMode?: 'first' | 'third';
-  onToggleCamera?: () => void;
   runnerCount?: number;
   onSetRunnerCount?: (count: number) => void;
 }
@@ -31,8 +28,6 @@ export const PauseModal: React.FC<PauseModalProps> = ({
   stats,
   isFullscreen = false,
   onToggleFullscreen,
-  cameraMode = 'third',
-  onToggleCamera,
   runnerCount = 4,
   onSetRunnerCount,
 }) => {
@@ -114,21 +109,6 @@ export const PauseModal: React.FC<PauseModalProps> = ({
         {/* Quick Settings */}
         <div className="border-t border-white/20 pt-4 flex flex-col gap-3 font-mono text-xs">
           <div className="text-[10px] tracking-widest text-white/50 uppercase">CONFIGURATIONS</div>
-
-          {/* Camera View Mode */}
-          {onToggleCamera && (
-            <div className="flex items-center justify-between">
-              <span className="flex items-center gap-2 text-white/70">
-                <Camera className="w-3.5 h-3.5 text-orange-400" /> CAMERA VIEW [V]
-              </span>
-              <button
-                onClick={onToggleCamera}
-                className="px-3 py-1 border border-orange-400/60 bg-black text-xs text-orange-400 font-bold hover:border-orange-300 hover:text-white transition-colors cursor-pointer"
-              >
-                {cameraMode === 'third' ? '3P SPIDER CRAWLER' : '1P COCKPIT'}
-              </button>
-            </div>
-          )}
 
           {/* Competitor Runners Count */}
           {onSetRunnerCount && (
