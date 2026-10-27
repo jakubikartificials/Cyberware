@@ -5,7 +5,6 @@ import { PlayerController } from '../physics/PlayerController';
 import { soundSynth } from '../audio/SoundSynth';
 import { GameSettings, PlayerStats, GameState } from '../types';
 import { CrawlerBotsManager } from '../entities/CrawlerBotsManager';
-import { PulseNetManager } from '../entities/PulseNetManager';
 import { NetworkManager } from '../multiplayer/NetworkManager';
 
 export class WireScene {
@@ -15,7 +14,6 @@ export class WireScene {
   public mazeData!: MazeData;
   public player!: PlayerController;
   public crawlerBotsManager!: CrawlerBotsManager;
-  public pulseNetManager!: PulseNetManager;
   public networkManager!: NetworkManager;
   public runnerCount: number = 4;
 
@@ -135,32 +133,15 @@ export class WireScene {
     this.player.setSpawnPosition([0, 0, 5], 0);
     this.scene.add(this.player.crawler.group);
 
-    // Initialize Pulse Net Manager
-    this.pulseNetManager = new PulseNetManager(this.scene);
-    this.pulseNetManager.onDispositionShift = () => {
-      this.triggerLevelDispositionShift();
-      this.networkManager.sendDispositionShift();
-    };
-
     // Initialize Multiplayer Network Manager
     this.networkManager = new NetworkManager(this.scene);
-    this.networkManager.onRemoteNetDeployed = (pos, norm) => {
-      this.pulseNetManager.deployNet(
-        new THREE.Vector3(...pos),
-        new THREE.Vector3(...norm),
-        'player2',
-        0xff007f
-      );
-      this.triggerLevelDispositionShift();
-    };
     this.networkManager.onRemoteDispositionShift = () => {
       this.triggerLevelDispositionShift();
     };
     this.networkManager.onRemotePulseFired = (pos, dir) => {
-      // Render remote projectile in scene
       const startPos = new THREE.Vector3(...pos);
-      const velocity = new THREE.Vector3(...dir).multiplyScalar(40);
-      const geom = new THREE.OctahedronGeometry(0.06, 0);
+      const velocity = new THREE.Vector3(...dir).multiplyScalar(42);
+      const geom = new THREE.OctahedronGeometry(0.08, 0);
       const line = new THREE.LineSegments(
         new THREE.EdgesGeometry(geom),
         new THREE.LineBasicMaterial({ color: 0xff007f, linewidth: 2 })
@@ -171,14 +152,9 @@ export class WireScene {
         position: startPos,
         velocity,
         life: 0,
-        maxLife: 2.0,
+        maxLife: 2.2,
         mesh: line,
       });
-    };
-
-    // Forward local pulse net deployments to network
-    this.player.onPulseNetDeployed = (pos, normal) => {
-      this.networkManager.sendNetDeployed(pos, normal);
     };
 
     // Initialize Crawler Bots Manager
@@ -280,8 +256,8 @@ export class WireScene {
   private onContextMenu = (e: MouseEvent): void => {
     e.preventDefault();
     if (this.gameState === 'playing') {
-      // Right click deploys temporary Pulse Net!
-      this.deployPulseNet();
+      // Right click: fires rope to climb, second right-click pulls rope!
+      this.handleRope();
     }
   };
 
@@ -333,7 +309,7 @@ export class WireScene {
     if (key === 'KeyA' || key === 'ArrowLeft') this.heldKeys.left = true;
     if (key === 'KeyD' || key === 'ArrowRight') this.heldKeys.right = true;
 
-    // Jump / Wall Leap
+    // Jump
     if (key === 'Space') {
       const nearBeat = soundSynth.getBeatProgress().isNearBeat;
       this.player.queueJump(nearBeat);
@@ -356,9 +332,9 @@ export class WireScene {
       this.firePulse();
     }
 
-    // Deploy Temporary Pulse Net ("disable walkthrough net & change level disposition")
+    // Climbing Rope: Fire rope to climb or pull rope (keyboard alternate for right click)
     if (key === 'KeyE') {
-      this.deployPulseNet();
+      this.handleRope();
     }
   };
 
@@ -399,9 +375,9 @@ export class WireScene {
     this.networkManager.sendPulseFired(this.player.position, dir);
   }
 
-  public deployPulseNet(): void {
+  public handleRope(): void {
     if (this.gameState !== 'playing') return;
-    this.player.deployPulseNet(this.pulseNetManager);
+    this.player.handleRightClickRope(this.scene, this.mazeData);
   }
 
   public requestPointerLock(): void {
@@ -422,8 +398,10 @@ export class WireScene {
     this.stats.health = this.stats.maxHealth;
     this.stats.score = 0;
     this.stats.beatCombo = 0;
+    this.stats.currentSector = 1;
+    this.stats.totalSectors = 6;
+    this.player.setSpawnPosition([0, 0, 5], 0, false);
     this.crawlerBotsManager?.initBots(this.runnerCount);
-    this.pulseNetManager?.clear();
     this.onStateTransition?.('playing');
     this.requestPointerLock();
   }
@@ -436,9 +414,10 @@ export class WireScene {
   }
 
   public restartSector(): void {
+    const isEven = this.stats.currentSector % 2 === 0;
     const cp = this.mazeData.checkpoints.find((c) => c.sectorIndex === this.stats.currentSector);
     if (cp) {
-      this.player.setSpawnPosition(cp.position, 0);
+      this.player.setSpawnPosition(cp.position, 0, isEven);
     }
     this.stats.health = this.stats.maxHealth;
     this.stats.beatCombo = 0;
@@ -471,9 +450,8 @@ export class WireScene {
     this.stats.currentSector = 1;
     this.stats.checkpointName = this.mazeData.checkpoints[0].name;
 
-    this.player.setSpawnPosition([0, 0, 5], 0);
+    this.player.setSpawnPosition([0, 0, 5], 0, false);
     this.crawlerBotsManager?.initBots(this.runnerCount);
-    this.pulseNetManager?.clear();
     this.gameState = 'playing';
     this.onStateTransition?.('playing');
     this.requestPointerLock();
@@ -517,7 +495,7 @@ export class WireScene {
       this.stats.elapsedTime += dt;
       this.stats.score += Math.round(dt * 10 * (1 + this.stats.beatCombo * 0.1));
 
-      // Player update with wall-walking, collision, and pulse nets
+      // Player update with climbing rope, kinematics, and inverted gravity support
       this.player.update(
         dt,
         {
@@ -528,11 +506,10 @@ export class WireScene {
         this.mazeData,
         this.settings,
         this.stats,
-        this.scene,
-        this.pulseNetManager
+        this.scene
       );
 
-      // Update bot runners and hazard crawlers
+      // Update bot runners and hazard sentinels
       if (this.crawlerBotsManager) {
         this.crawlerBotsManager.update(
           dt,
@@ -548,13 +525,9 @@ export class WireScene {
             } else {
               this.onStatsUpdate?.({ ...this.stats });
             }
-          },
-          this.pulseNetManager
+          }
         );
       }
-
-      // Update active pulse nets
-      this.pulseNetManager.update(dt, this.mazeData, time);
 
       // Level Disposition Shift timer
       if (this.isDispositionShifted) {
@@ -575,9 +548,9 @@ export class WireScene {
           position: [this.player.position.x, this.player.position.y, this.player.position.z],
           yaw: this.player.yaw,
           pitch: this.player.pitch,
-          surfaceNormal: [this.player.surfaceNormal.x, this.player.surfaceNormal.y, this.player.surfaceNormal.z],
+          surfaceNormal: [0, this.player.gravityMultiplier, 0],
           speed: this.player.velocity.length(),
-          isGrounded: this.player.isGrounded || this.player.isWallWalking,
+          isGrounded: this.player.isGrounded,
           health: this.stats.health,
           score: this.stats.score,
           checkpointSector: this.stats.currentSector,
@@ -695,7 +668,6 @@ export class WireScene {
 
     soundSynth.stopMusic();
     this.networkManager.cleanup();
-    this.pulseNetManager.clear();
 
     this.scene.clear();
     this.renderer.dispose();
@@ -731,7 +703,7 @@ export class WireScene {
     this.firePulse();
   }
 
-  public handleTouchNet(): void {
-    this.deployPulseNet();
+  public handleTouchRope(): void {
+    this.handleRope();
   }
 }

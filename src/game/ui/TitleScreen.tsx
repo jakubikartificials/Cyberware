@@ -115,26 +115,26 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
           </div>
 
           <p className="font-mono text-xs sm:text-sm text-white/70 max-w-xl leading-relaxed">
-            Scaled 4x smaller into a towering cybernetic megastructure. Walk on walls, scale vertical shafts, deploy temporary pulse nets to trap enemies and alter level dispositions, and conquer rotating cog platforms to extract the Prismatic Core.
+            Navigate 6 cybernetic sectors featuring stepped voxel terrain, towering spires, and alternating upside-down inverted gravity. Use your right-click climbing rope to scale spires and hang from ceiling caverns, blast sentinel bots with left-click pulses, and extract the Core.
           </p>
         </div>
 
         {/* Feature Highlights Grid */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1">
           <div className="p-2 bg-black/60 border border-white/10 font-mono">
-            <div className="text-[10px] text-cyan-400 font-bold tracking-wider uppercase">01 // WALL WALKING</div>
-            <div className="text-[11px] text-white/60 mt-0.5">Magnetic crawler grip on all vertical walls</div>
+            <div className="text-[10px] text-amber-400 font-bold tracking-wider uppercase">01 // CLIMBING ROPE</div>
+            <div className="text-[11px] text-white/60 mt-0.5">Right-click to tether & pull to climb walls/spires</div>
           </div>
           <div className="p-2 bg-black/60 border border-white/10 font-mono">
-            <div className="text-[10px] text-pink-400 font-bold tracking-wider uppercase">02 // PULSE NETS</div>
-            <div className="text-[11px] text-white/60 mt-0.5">Barrier nets that trap bots & shift map layouts</div>
+            <div className="text-[10px] text-cyan-400 font-bold tracking-wider uppercase">02 // 6 LEVELS & INVERTED GRAVITY</div>
+            <div className="text-[11px] text-white/60 mt-0.5">Alternating upside-down ceiling caverns</div>
           </div>
           <div className="p-2 bg-black/60 border border-white/10 font-mono">
-            <div className="text-[10px] text-amber-400 font-bold tracking-wider uppercase">03 // ROTATING COGS</div>
-            <div className="text-[11px] text-white/60 mt-0.5">Massive spinning hex platforms over void pits</div>
+            <div className="text-[10px] text-orange-400 font-bold tracking-wider uppercase">03 // SENTINEL SENTRIES</div>
+            <div className="text-[11px] text-white/60 mt-0.5">Orange wireframe faceted sentinels with 8 tentacles</div>
           </div>
           <div className="p-2 bg-black/60 border border-white/10 font-mono">
-            <div className="text-[10px] text-emerald-400 font-bold tracking-wider uppercase">04 // 2P ONLINE</div>
+            <div className="text-[10px] text-pink-400 font-bold tracking-wider uppercase">04 // 2P ONLINE</div>
             <div className="text-[11px] text-white/60 mt-0.5">Real-time WebRTC 2-player co-op / race</div>
           </div>
         </div>

@@ -27,15 +27,18 @@ const INITIAL_STATS: PlayerStats = {
   pulseEnergy: 100,
   maxPulseEnergy: 100,
   cubesCollected: 0,
-  totalCubes: 6,
+  totalCubes: 10,
   currentSector: 1,
-  totalSectors: 4,
-  checkpointName: 'VECTOR INITIATION',
+  totalSectors: 6,
+  checkpointName: 'LEVEL 01 // PYRAMID VAULT',
   elapsedTime: 0,
   beatCombo: 0,
   maxBeatCombo: 0,
   beatAccuracyPct: 100,
   score: 0,
+  isGravityInverted: false,
+  isRopeAttached: false,
+  isPullingRope: false,
 };
 
 const DEFAULT_SETTINGS: GameSettings = {
@@ -189,8 +192,6 @@ export default function App() {
     // Fast interval to sync wall-walking & cooldown states into React HUD
     const hudSyncInterval = window.setInterval(() => {
       if (wireSceneRef.current) {
-        setIsWallWalking(wireSceneRef.current.player.isWallWalking);
-        setPulseNetCooldown(wireSceneRef.current.player.pulseNetCooldown);
         if (wireSceneRef.current.networkManager.isConnected) {
           setIsMultiplayerConnected(true);
           setMultiplayerPing(wireSceneRef.current.networkManager.pingMs);
@@ -403,8 +404,6 @@ export default function App() {
             isTouchControls={shouldShowTouch}
             isFullscreen={isFullscreen}
             onToggleFullscreen={handleToggleFullscreen}
-            isWallWalking={isWallWalking}
-            pulseNetCooldown={pulseNetCooldown}
             isMultiplayerConnected={isMultiplayerConnected}
             multiplayerPing={multiplayerPing}
             remotePlayerState={remotePlayerState}
@@ -430,8 +429,8 @@ export default function App() {
               onPulse={() => {
                 wireSceneRef.current?.handleTouchPulse();
               }}
-              onNet={() => {
-                wireSceneRef.current?.handleTouchNet();
+              onRope={() => {
+                wireSceneRef.current?.handleTouchRope();
               }}
               onPause={() => {
                 if (wireSceneRef.current) {

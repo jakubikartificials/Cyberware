@@ -91,6 +91,9 @@ export interface PlayerStats {
   maxBeatCombo: number;
   beatAccuracyPct: number;
   score: number;
+  isGravityInverted?: boolean;
+  isRopeAttached?: boolean;
+  isPullingRope?: boolean;
 }
 
 export interface RotatingPlatform {

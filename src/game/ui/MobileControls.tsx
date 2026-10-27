@@ -7,7 +7,7 @@ interface MobileControlsProps {
   onJump: () => void;
   onDash: () => void;
   onPulse: () => void;
-  onNet: () => void;
+  onRope: () => void;
   onPause: () => void;
   dashCharge: number;
   isFullscreen?: boolean;
@@ -20,7 +20,7 @@ export const MobileControls: React.FC<MobileControlsProps> = ({
   onJump,
   onDash,
   onPulse,
-  onNet,
+  onRope,
   onPause,
   dashCharge,
   isFullscreen = false,
@@ -232,17 +232,17 @@ export const MobileControls: React.FC<MobileControlsProps> = ({
         <div className="pointer-events-auto flex items-end gap-2.5 sm:gap-3.5">
           {/* Action Column 1: Pulse Net and Pulse Blaster */}
           <div className="flex flex-col gap-2.5 items-center">
-            {/* Deploy Pulse Net Button */}
+            {/* Climbing Rope Button (Fire or Pull to climb) */}
             <button
               onTouchStart={(e) => {
                 e.preventDefault();
-                onNet();
+                onRope();
               }}
-              onClick={onNet}
-              className="w-12 h-12 rounded-full border border-cyan-400 bg-cyan-950/70 flex flex-col items-center justify-center text-cyan-300 active:scale-90 shadow-[0_0_12px_rgba(0,240,255,0.35)] transition-transform cursor-pointer"
+              onClick={onRope}
+              className="w-12 h-12 rounded-full border border-amber-400 bg-amber-950/70 flex flex-col items-center justify-center text-amber-300 active:scale-90 shadow-[0_0_14px_rgba(255,170,0,0.4)] transition-transform cursor-pointer"
             >
-              <Grid className="w-4 h-4 text-cyan-400" />
-              <span className="text-[7.5px] font-mono font-bold tracking-tight mt-0.5">NET</span>
+              <Grid className="w-4 h-4 text-amber-400" />
+              <span className="text-[7.5px] font-mono font-bold tracking-tight mt-0.5">ROPE</span>
             </button>
 
             {/* Pulse Weapon Button */}

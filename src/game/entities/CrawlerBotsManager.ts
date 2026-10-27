@@ -3,7 +3,6 @@ import { CyberCrawler } from './CyberCrawler';
 import { MazeData } from '../world/MazeBuilder';
 import { soundSynth } from '../audio/SoundSynth';
 import { PlayerStats } from '../types';
-import { PulseNetManager } from './PulseNetManager';
 
 export interface BotRunner {
   id: string;
@@ -35,34 +34,45 @@ export interface HazardCrawler {
   alive: boolean;
   damage: number;
   chitterCooldown: number;
+  isInvertedLevel?: boolean;
 }
 
 export class CrawlerBotsManager {
   private scene: THREE.Scene;
   public botRunners: BotRunner[] = [];
   public hazardCrawlers: HazardCrawler[] = [];
-  public totalRunnerCount: number = 4; // default: 4 runners total (Player + 3 Bot Runners)
+  public totalRunnerCount: number = 4;
 
-  // Waypoints through the maze sectors for competitor runners to navigate
+  // Waypoints through all 6 levels
   private mazeWaypoints: THREE.Vector3[] = [
+    // Level 1: Normal
     new THREE.Vector3(0, 0, -10),
     new THREE.Vector3(0, 0, -25),
-    new THREE.Vector3(0, 0, -56),
-    new THREE.Vector3(0, 0, -78),
-    new THREE.Vector3(0, 0, -100),
-    new THREE.Vector3(0, 0, -120),
-    new THREE.Vector3(-2, 0, -136),
-    new THREE.Vector3(2, 1.5, -144),
-    new THREE.Vector3(-2, 3, -152),
-    new THREE.Vector3(0, 4.5, -160),
-    new THREE.Vector3(0, 5, -172),
-    new THREE.Vector3(0, 5, -195),
-    new THREE.Vector3(0, 12, -215),
-    new THREE.Vector3(0, 8, -238),
-    new THREE.Vector3(0, 4, -254),
-    new THREE.Vector3(0, 4, -280),
-    new THREE.Vector3(0, 4, -300),
-    new THREE.Vector3(0, 4, -330), // Extraction Core
+    new THREE.Vector3(0, 0, -50),
+    new THREE.Vector3(0, 0, -70),
+    // Level 2: Inverted (Ceiling at Y=20)
+    new THREE.Vector3(0, 19, -95),
+    new THREE.Vector3(0, 19, -120),
+    new THREE.Vector3(0, 19, -145),
+    new THREE.Vector3(0, 19, -155),
+    // Level 3: Normal
+    new THREE.Vector3(0, 0, -180),
+    new THREE.Vector3(0, 1.5, -200),
+    new THREE.Vector3(0, 0, -230),
+    new THREE.Vector3(0, 0, -240),
+    // Level 4: Inverted (Ceiling at Y=22)
+    new THREE.Vector3(0, 21, -270),
+    new THREE.Vector3(0, 21, -295),
+    new THREE.Vector3(0, 21, -325),
+    // Level 5: Normal
+    new THREE.Vector3(0, 0, -350),
+    new THREE.Vector3(0, 5, -375),
+    new THREE.Vector3(0, 0, -400),
+    new THREE.Vector3(0, 0, -410),
+    // Level 6: Inverted Core (Ceiling at Y=24)
+    new THREE.Vector3(0, 23, -440),
+    new THREE.Vector3(0, 23, -465),
+    new THREE.Vector3(0, 22.5, -485),
   ];
 
   constructor(scene: THREE.Scene) {
@@ -75,12 +85,12 @@ export class CrawlerBotsManager {
 
     // 1. Initialize Competitor Bot Runners (if runnerCount > 1)
     const runnerConfigs = [
-      { name: 'BOT // VEX', color: 0xff007f, offset: [-2.5, 0, 4] },
-      { name: 'BOT // ZEPHYR', color: 0xffaa00, offset: [2.5, 0, 4] },
-      { name: 'BOT // APEX', color: 0x00ff96, offset: [-3.5, 0, 1] },
-      { name: 'BOT // SHADOW', color: 0xff0055, offset: [3.5, 0, 1] },
-      { name: 'BOT // PULSAR', color: 0xffea00, offset: [-2.0, 0, 8] },
-      { name: 'BOT // SPECTER', color: 0x9d00ff, offset: [2.0, 0, 8] },
+      { name: 'SENTINEL // VEX', color: 0xff7700, offset: [-2.5, 0, 4] },
+      { name: 'SENTINEL // ZEPHYR', color: 0xffaa00, offset: [2.5, 0, 4] },
+      { name: 'SENTINEL // APEX', color: 0x00ff96, offset: [-3.5, 0, 1] },
+      { name: 'SENTINEL // SHADOW', color: 0xff0055, offset: [3.5, 0, 1] },
+      { name: 'SENTINEL // PULSAR', color: 0xffea00, offset: [-2.0, 0, 8] },
+      { name: 'SENTINEL // SPECTER', color: 0x9d00ff, offset: [2.0, 0, 8] },
     ];
 
     const competitorsToAdd = Math.max(0, runnerCount - 1);
@@ -106,24 +116,39 @@ export class CrawlerBotsManager {
       });
     }
 
-    // 2. Initialize Hazard Crawler Bots (matching user's reference image!)
-    const hazardSpawns: { id: string; p1: [number, number, number]; p2: [number, number, number]; color: number }[] = [
-      // Sector 1 Corridor patrol
-      { id: 'hazard_1', p1: [-3, 0, -22], p2: [3, 0, -22], color: 0xff7700 }, // exact orange from reference image!
-      // Sector 2 Pulse Labyrinth chaser
-      { id: 'hazard_2', p1: [-4, 0, -112], p2: [4, 0, -126], color: 0xff7700 },
-      // Sector 2 High phase walkway
-      { id: 'hazard_3', p1: [-3, 5, -170], p2: [3, 5, -170], color: 0xff4400 },
-      // Sector 3 Kinetic Shaft patrol
-      { id: 'hazard_4', p1: [-4, 12, -210], p2: [4, 12, -222], color: 0xff2200 },
-      // Sector 4 Core extraction perimeter guard
-      { id: 'hazard_5', p1: [-10, 4, -320], p2: [10, 4, -320], color: 0xff7700 },
+    // 2. Initialize Hazard Sentinel Bots matching the user's Blender images
+    // Radiant wireframe orange (0xff7700) with 8 segmented tentacles
+    const hazardSpawns: { id: string; p1: [number, number, number]; p2: [number, number, number]; color: number; inverted?: boolean }[] = [
+      // Level 1: Normal Pyramid Vault
+      { id: 'hazard_l1_1', p1: [-3, 0.5, -20], p2: [3, 0.5, -20], color: 0xff7700 },
+      { id: 'hazard_l1_2', p1: [-4, 0.5, -45], p2: [4, 0.5, -45], color: 0xff7700 },
+
+      // Level 2: Inverted Stalactites (Hanging from ceiling Y=20)
+      { id: 'hazard_l2_1', p1: [-4, 18.5, -105], p2: [4, 18.5, -105], color: 0xff7700, inverted: true },
+      { id: 'hazard_l2_2', p1: [-5, 18.5, -135], p2: [5, 18.5, -135], color: 0xff7700, inverted: true },
+
+      // Level 3: Spire Gauntlet
+      { id: 'hazard_l3_1', p1: [-4, 1.0, -185], p2: [4, 1.0, -185], color: 0xff7700 },
+      { id: 'hazard_l3_2', p1: [-3, 1.0, -225], p2: [3, 1.0, -225], color: 0xff7700 },
+
+      // Level 4: Inverted Chasm (Hanging from ceiling Y=22)
+      { id: 'hazard_l4_1', p1: [-4, 20.5, -280], p2: [4, 20.5, -280], color: 0xff7700, inverted: true },
+      { id: 'hazard_l4_2', p1: [-4, 20.5, -310], p2: [4, 20.5, -310], color: 0xff7700, inverted: true },
+
+      // Level 5: Ascent Monolith
+      { id: 'hazard_l5_1', p1: [-5, 1.0, -360], p2: [5, 1.0, -360], color: 0xff7700 },
+      { id: 'hazard_l5_2', p1: [-4, 1.0, -395], p2: [4, 1.0, -395], color: 0xff7700 },
+
+      // Level 6: Inverted Core Apex (Ceiling Y=24)
+      { id: 'hazard_l6_1', p1: [-6, 22.0, -450], p2: [6, 22.0, -450], color: 0xff7700, inverted: true },
+      { id: 'hazard_l6_2', p1: [-6, 22.0, -475], p2: [6, 22.0, -475], color: 0xff7700, inverted: true },
     ];
 
     for (const h of hazardSpawns) {
       const crawler = new CyberCrawler(h.color, false);
       const startPos = new THREE.Vector3(...h.p1);
-      crawler.setPositionAndRotation(startPos, 0);
+      const upDir = h.inverted ? new THREE.Vector3(0, -1, 0) : new THREE.Vector3(0, 1, 0);
+      crawler.setPositionAndRotation(startPos, 0, upDir);
       this.scene.add(crawler.group);
 
       this.hazardCrawlers.push({
@@ -142,6 +167,7 @@ export class CrawlerBotsManager {
         alive: true,
         damage: 15,
         chitterCooldown: Math.random() * 2,
+        isInvertedLevel: !!h.inverted,
       });
     }
   }
@@ -149,10 +175,9 @@ export class CrawlerBotsManager {
   public update(
     dt: number,
     playerPos: THREE.Vector3,
-    mazeData: MazeData,
-    stats: PlayerStats,
-    onPlayerDamaged: (amount: number) => void,
-    pulseNetManager?: PulseNetManager
+    _mazeData: MazeData,
+    _stats: PlayerStats,
+    onPlayerDamaged: (amount: number) => void
   ): void {
     // 1. Update Competitor Bot Runners
     for (const runner of this.botRunners) {
@@ -164,6 +189,7 @@ export class CrawlerBotsManager {
       const target = this.mazeWaypoints[runner.currentWaypointIdx];
       if (target) {
         const dx = target.x - runner.position.x;
+        const dy = target.y - runner.position.y;
         const dz = target.z - runner.position.z;
         const distToTarget = Math.sqrt(dx * dx + dz * dz);
 
@@ -173,30 +199,24 @@ export class CrawlerBotsManager {
             runner.finished = true;
           }
         } else {
-          // Steer towards target
           const targetYaw = Math.atan2(-dx, -dz);
           runner.yaw = THREE.MathUtils.damp(runner.yaw, targetYaw, 8, dt);
 
           const moveDir = new THREE.Vector3(-Math.sin(runner.yaw), 0, -Math.cos(runner.yaw)).normalize();
           runner.position.addScaledVector(moveDir, runner.speed * dt);
-          runner.position.y = target.y; // conform to floor altitude
+          runner.position.y = THREE.MathUtils.damp(runner.position.y, target.y, 6, dt);
 
-          runner.crawler.setPositionAndRotation(runner.position, runner.yaw);
+          const isEvenLevel = target.y > 10;
+          const upDir = isEvenLevel ? new THREE.Vector3(0, -1, 0) : new THREE.Vector3(0, 1, 0);
+          runner.crawler.setPositionAndRotation(runner.position, runner.yaw, upDir);
           runner.crawler.update(dt, runner.speed, true);
         }
       }
     }
 
-    // 2. Update Hazard Crawler Bots
+    // 2. Update Hazard Sentinel Bots
     for (const bot of this.hazardCrawlers) {
       if (!bot.alive) continue;
-
-      // Check if hazard crawler wandered into a Pulse Net barrier
-      if (pulseNetManager && pulseNetManager.checkCrawlerNetTrap(bot.position, stats)) {
-        bot.alive = false;
-        bot.crawler.setVisible(false);
-        continue;
-      }
 
       if (bot.stunnedTimer > 0) {
         bot.stunnedTimer -= dt;
@@ -206,12 +226,14 @@ export class CrawlerBotsManager {
 
       if (bot.chitterCooldown > 0) bot.chitterCooldown -= dt;
 
-      // Distance to player
       const distToPlayer = bot.position.distanceTo(playerPos);
+      const upDir = bot.isInvertedLevel ? new THREE.Vector3(0, -1, 0) : new THREE.Vector3(0, 1, 0);
 
-      if (distToPlayer <= 16 && Math.abs(bot.position.y - playerPos.y) < 4) {
-        // Player detected: Engage chase mode!
+      if (distToPlayer <= 18 && Math.abs(bot.position.y - playerPos.y) < 7) {
+        // Player detected: Flare tentacles and engage chase mode! (matches enemy02_ba84c091.png)
         bot.isChasing = true;
+        bot.crawler.setAlertState(true);
+
         const dx = playerPos.x - bot.position.x;
         const dz = playerPos.z - bot.position.z;
         const targetYaw = Math.atan2(-dx, -dz);
@@ -226,26 +248,26 @@ export class CrawlerBotsManager {
         const chaseSpeed = 5.8;
         bot.position.addScaledVector(moveDir, chaseSpeed * dt);
 
-        bot.crawler.setPositionAndRotation(bot.position, bot.yaw);
+        bot.crawler.setPositionAndRotation(bot.position, bot.yaw, upDir);
         bot.crawler.update(dt, chaseSpeed, true);
 
-        // Player attack collision
+        // Player collision damage
         if (distToPlayer <= 1.8) {
           onPlayerDamaged(bot.damage);
           soundSynth.playHazardHit();
-          // Bounce back after hitting player
           bot.position.addScaledVector(moveDir, -1.2);
           bot.stunnedTimer = 0.8;
         }
       } else {
-        // Normal patrol
+        // Normal patrol (tentacles undulating gently)
         bot.isChasing = false;
+        bot.crawler.setAlertState(false);
+
         const dx = bot.patrolTarget.x - bot.position.x;
         const dz = bot.patrolTarget.z - bot.position.z;
         const distToPatrol = Math.sqrt(dx * dx + dz * dz);
 
         if (distToPatrol < 1.2) {
-          // Switch target
           bot.patrolTarget = bot.patrolTarget === bot.patrolStart ? bot.patrolEnd : bot.patrolStart;
         } else {
           const targetYaw = Math.atan2(-dx, -dz);
@@ -255,14 +277,13 @@ export class CrawlerBotsManager {
           const patrolSpeed = 3.2;
           bot.position.addScaledVector(moveDir, patrolSpeed * dt);
 
-          bot.crawler.setPositionAndRotation(bot.position, bot.yaw);
+          bot.crawler.setPositionAndRotation(bot.position, bot.yaw, upDir);
           bot.crawler.update(dt, patrolSpeed, true);
         }
       }
     }
   }
 
-  // Check if a player's pulse projectile hits any hazard crawler
   public checkPulseHit(projectilePos: THREE.Vector3, stats: PlayerStats): boolean {
     for (const bot of this.hazardCrawlers) {
       if (!bot.alive) continue;

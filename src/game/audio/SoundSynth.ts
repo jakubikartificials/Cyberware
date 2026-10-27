@@ -607,6 +607,28 @@ export class SoundSynth {
     osc.stop(now + 0.4);
   }
 
+  public playLaserSizzle(): void {
+    this.resumeContext();
+    if (!this.ctx || !this.sfxGain || this.isMuted) return;
+    const now = this.ctx.currentTime;
+
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(450, now);
+    osc.frequency.linearRampToValueAtTime(150, now + 0.12);
+
+    gain.gain.setValueAtTime(0.2, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.14);
+
+    osc.connect(gain);
+    gain.connect(this.sfxGain);
+
+    osc.start(now);
+    osc.stop(now + 0.15);
+  }
+
   public playPulseNetDeploy(): void {
     this.resumeContext();
     if (!this.ctx || !this.sfxGain || this.isMuted) return;
@@ -689,6 +711,95 @@ export class SoundSynth {
 
     osc.start(now);
     osc.stop(now + 0.12);
+  }
+
+  public playRopeLaunch(): void {
+    this.resumeContext();
+    if (!this.ctx || !this.sfxGain || this.isMuted) return;
+    const now = this.ctx.currentTime;
+
+    // High velocity grappling tether shot whistle
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(320, now);
+    osc.frequency.exponentialRampToValueAtTime(1200, now + 0.15);
+
+    gain.gain.setValueAtTime(0.3, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.22);
+
+    osc.connect(gain);
+    gain.connect(this.sfxGain);
+
+    osc.start(now);
+    osc.stop(now + 0.25);
+  }
+
+  public playRopePull(): void {
+    this.resumeContext();
+    if (!this.ctx || !this.sfxGain || this.isMuted) return;
+    const now = this.ctx.currentTime;
+
+    // High torque motor reeling climb hum
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+    osc.type = 'triangle';
+    osc.frequency.setValueAtTime(220, now);
+    osc.frequency.linearRampToValueAtTime(580, now + 0.3);
+
+    gain.gain.setValueAtTime(0.25, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.35);
+
+    osc.connect(gain);
+    gain.connect(this.sfxGain);
+
+    osc.start(now);
+    osc.stop(now + 0.38);
+  }
+
+  public playRopeRelease(): void {
+    this.resumeContext();
+    if (!this.ctx || !this.sfxGain || this.isMuted) return;
+    const now = this.ctx.currentTime;
+
+    // Cable release snap
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+    osc.type = 'square';
+    osc.frequency.setValueAtTime(800, now);
+    osc.frequency.exponentialRampToValueAtTime(180, now + 0.08);
+
+    gain.gain.setValueAtTime(0.25, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.1);
+
+    osc.connect(gain);
+    gain.connect(this.sfxGain);
+
+    osc.start(now);
+    osc.stop(now + 0.12);
+  }
+
+  public playGravityFlip(): void {
+    this.resumeContext();
+    if (!this.ctx || !this.sfxGain || this.isMuted) return;
+    const now = this.ctx.currentTime;
+
+    // Cosmic dimension / gravity invert rumble
+    const subOsc = this.ctx.createOscillator();
+    const subGain = this.ctx.createGain();
+    subOsc.type = 'sine';
+    subOsc.frequency.setValueAtTime(60, now);
+    subOsc.frequency.linearRampToValueAtTime(140, now + 0.3);
+    subOsc.frequency.exponentialRampToValueAtTime(40, now + 0.7);
+
+    subGain.gain.setValueAtTime(0.45, now);
+    subGain.gain.exponentialRampToValueAtTime(0.001, now + 0.75);
+
+    subOsc.connect(subGain);
+    subGain.connect(this.sfxGain);
+
+    subOsc.start(now);
+    subOsc.stop(now + 0.8);
   }
 }
 

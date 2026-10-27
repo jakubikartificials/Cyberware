@@ -3,7 +3,6 @@ import { BoundingBox3D, MazeData } from '../world/MazeBuilder';
 import { soundSynth } from '../audio/SoundSynth';
 import { GameSettings, PlayerStats } from '../types';
 import { CyberCrawler } from '../entities/CyberCrawler';
-import { PulseNetManager } from '../entities/PulseNetManager';
 
 export interface PulseProjectile {
   position: THREE.Vector3;
@@ -18,30 +17,29 @@ export class PlayerController {
   public position: THREE.Vector3 = new THREE.Vector3(0, 0.5, 5);
   public velocity: THREE.Vector3 = new THREE.Vector3();
 
-  // Character Cyber Crawler Avatar & Camera Mode
+  // Character Cyber Sentinel Avatar (visible to other players/reflections, hidden in cockpit)
   public crawler: CyberCrawler = new CyberCrawler(0x00f0ff, true);
-  // Third person view is strictly disabled as requested; strictly 1st person cockpit
   public cameraMode: 'first' = 'first';
 
   // Rotation angles
   public yaw: number = 0;
   public pitch: number = 0;
 
-  // Surface Normal for Wall-Walking (floor: 0,1,0; walls: ±1,0,0 or 0,0,±1; ceiling: 0,-1,0)
-  public surfaceNormal: THREE.Vector3 = new THREE.Vector3(0, 1, 0);
-  public targetNormal: THREE.Vector3 = new THREE.Vector3(0, 1, 0);
-  public currentUp: THREE.Vector3 = new THREE.Vector3(0, 1, 0);
-  public isWallWalking: boolean = false;
+  // Camera orientation & Gravity Mode
+  // 1.0 = Normal gravity (floor below, y down)
+  // -1.0 = Upside-down inverted gravity (ceiling above, y up)
+  public gravityMultiplier: number = 1.0;
+  public cameraRoll: number = 0; // target roll: 0 for normal, Math.PI for upside down
+  public currentRoll: number = 0;
 
   // 4x Smaller Player Dimensions
-  public height: number = 0.42; // scaled down 4x from 1.7
-  public radius: number = 0.12; // scaled down 4x from 0.45
+  public height: number = 0.42;
+  public radius: number = 0.12;
 
-  // Physics params tuned for 4x smaller crawler
+  // Physics parameters
   private moveSpeed: number = 8.5;
-  private dashSpeed: number = 18.0;
   private gravity: number = 22.0;
-  private jumpImpulse: number = 7.0;
+  private jumpImpulse: number = 7.5;
 
   // State flags
   public isGrounded: boolean = false;
@@ -60,13 +58,19 @@ export class PlayerController {
   private cameraShakeIntensity: number = 0;
   private landSquash: number = 0;
 
-  // Active projectiles & Pulse Net Cooldown
+  // Active pulse projectiles
   public projectiles: PulseProjectile[] = [];
   public pulseCooldown: number = 0;
-  public pulseNetCooldown: number = 0;
-  public maxPulseNetCooldown: number = 3.5;
 
-  // Reusable vectors for zero GC in loop
+  // Climbing Rope / Grappling Tether System
+  public isRopeAttached: boolean = false;
+  public isPullingRope: boolean = false;
+  public ropeAnchor: THREE.Vector3 = new THREE.Vector3();
+  public ropeCooldown: number = 0;
+  private ropeLineMesh: THREE.Line | null = null;
+  private ropeAnchorMesh: THREE.Mesh | null = null;
+
+  // Reusable vectors for zero GC in physics loop
   private readonly _forward = new THREE.Vector3();
   private readonly _right = new THREE.Vector3();
   private readonly _moveDir = new THREE.Vector3();
@@ -78,7 +82,6 @@ export class PlayerController {
   public onDamageTaken?: (amount: number) => void;
   public onBeatComboChanged?: (combo: number) => void;
   public onCheckProjectileHit?: (pos: THREE.Vector3) => boolean;
-  public onPulseNetDeployed?: (pos: THREE.Vector3, normal: THREE.Vector3) => void;
 
   constructor(camera: THREE.PerspectiveCamera) {
     this.camera = camera;
@@ -89,31 +92,41 @@ export class PlayerController {
     this.crawler.group.visible = false;
   }
 
-  public setSpawnPosition(pos: [number, number, number], yaw: number = 0): void {
-    this.position.set(pos[0], pos[1] + this.height, pos[2]);
+  public setSpawnPosition(pos: [number, number, number], yaw: number = 0, gravityInverted: boolean = false): void {
+    this.setGravityInverted(gravityInverted);
+    const spawnY = gravityInverted ? pos[1] - this.height : pos[1] + this.height;
+    this.position.set(pos[0], spawnY, pos[2]);
     this.velocity.set(0, 0, 0);
     this.yaw = yaw;
     this.pitch = 0;
-    this.surfaceNormal.set(0, 1, 0);
-    this.targetNormal.set(0, 1, 0);
-    this.currentUp.set(0, 1, 0);
+    this.releaseRope();
     this.camera.position.copy(this.position);
-    this.camera.up.set(0, 1, 0);
+  }
+
+  public setGravityInverted(inverted: boolean): void {
+    this.gravityMultiplier = inverted ? -1.0 : 1.0;
+    this.cameraRoll = inverted ? Math.PI : 0;
   }
 
   public handleMouseMove(movementX: number, movementY: number, settings: GameSettings): void {
     const sens = settings.mouseSensitivity * 0.0022;
-    this.yaw -= movementX * sens;
+    // When upside down, invert horizontal steering to maintain intuitive controls
+    const rollSign = this.gravityMultiplier < 0 ? -1 : 1;
+    this.yaw -= movementX * sens * rollSign;
     const invert = settings.invertY ? -1 : 1;
-    this.pitch -= movementY * sens * invert;
+    this.pitch -= movementY * sens * invert * rollSign;
 
-    // Clamp pitch between ~-85 and +85 degrees
     const maxPitch = (Math.PI / 2) - 0.05;
     this.pitch = Math.max(-maxPitch, Math.min(maxPitch, this.pitch));
   }
 
   public queueJump(nearBeat: boolean): void {
     this.jumpBufferTimer = 0.14;
+
+    // Jumping while rope attached releases rope with launch impulse
+    if (this.isRopeAttached) {
+      this.releaseRope(undefined, true);
+    }
 
     if (nearBeat) {
       soundSynth.playBeatBonus();
@@ -125,25 +138,25 @@ export class PlayerController {
     if (this.dashCooldownTimer > 0) return false;
 
     this.computeTangents(this._forward, this._right);
-
     this.dashDirection.set(0, 0, 0);
-    if (inputX !== 0 || inputZ !== 0) {
-      this.dashDirection.addScaledVector(this._right, inputX);
-      this.dashDirection.addScaledVector(this._forward, -inputZ);
-      this.dashDirection.normalize();
-    } else {
+
+    if (Math.abs(inputX) < 0.1 && Math.abs(inputZ) < 0.1) {
       this.dashDirection.copy(this._forward);
+    } else {
+      this.dashDirection.addScaledVector(this._right, inputX);
+      this.dashDirection.addScaledVector(this._forward, inputZ);
+      this.dashDirection.normalize();
     }
 
     this.isDashing = true;
     this.dashTimer = 0.22;
-    this.dashCooldownTimer = 1.1;
+    this.dashCooldownTimer = nearBeat ? 0.65 : 1.1;
 
-    // Boost velocity along surface
-    this.velocity.copy(this.dashDirection.multiplyScalar(this.dashSpeed));
+    const speed = nearBeat ? 22.0 : 17.0;
+    this.velocity.x = this.dashDirection.x * speed;
+    this.velocity.z = this.dashDirection.z * speed;
 
     soundSynth.playDash();
-    this.cameraShakeIntensity = 0.2;
 
     if (nearBeat) {
       soundSynth.playBeatBonus();
@@ -154,19 +167,19 @@ export class PlayerController {
   }
 
   /**
-   * Fire pulse weapon projectile
+   * Fire pulse blaster weapon (Left Mouse Click)
    */
   public firePulse(scene: THREE.Scene): void {
     if (this.pulseCooldown > 0) return;
-    this.pulseCooldown = 0.32;
+    this.pulseCooldown = 0.28;
 
     const dir = new THREE.Vector3();
     this.camera.getWorldDirection(dir);
 
     const startPos = this.camera.position.clone().addScaledVector(dir, 0.25);
 
-    // 4x smaller projectile
-    const geom = new THREE.OctahedronGeometry(0.06, 0);
+    // Vibrant wireframe diamond projectile
+    const geom = new THREE.OctahedronGeometry(0.08, 0);
     const edges = new THREE.EdgesGeometry(geom);
     const line = new THREE.LineSegments(
       edges,
@@ -177,9 +190,9 @@ export class PlayerController {
 
     this.projectiles.push({
       position: startPos,
-      velocity: dir.clone().multiplyScalar(40),
+      velocity: dir.clone().multiplyScalar(42),
       life: 0,
-      maxLife: 2.0,
+      maxLife: 2.2,
       mesh: line,
     });
 
@@ -187,53 +200,119 @@ export class PlayerController {
   }
 
   /**
-   * Deploy temporary Pulse Net barrier
+   * Handle Climbing Rope / Grappling Tether (Right Mouse Click):
+   * - 1st click: Fires climbing rope tether towards crosshair, anchors to wall/spire/ceiling
+   * - 2nd click: Pulls the rope, rapidly hauling player toward anchor point to climb
    */
-  public deployPulseNet(pulseNetManager: PulseNetManager): boolean {
-    if (this.pulseNetCooldown > 0) return false;
-    this.pulseNetCooldown = this.maxPulseNetCooldown;
+  public handleRightClickRope(scene: THREE.Scene, mazeData: MazeData): void {
+    if (!this.isRopeAttached) {
+      // 1. Fire rope
+      this.fireRope(scene, mazeData);
+    } else {
+      // 2. Second click: Pull rope to climb!
+      this.pullRope();
+    }
+  }
+
+  /**
+   * Fire rope tether towards look direction
+   */
+  public fireRope(scene: THREE.Scene, mazeData: MazeData): boolean {
+    if (this.ropeCooldown > 0) return false;
+    this.ropeCooldown = 0.2;
 
     const dir = new THREE.Vector3();
     this.camera.getWorldDirection(dir);
 
-    // Deploy net ahead in gaze direction
-    const netPos = this.position.clone().addScaledVector(dir, 1.2);
-    netPos.addScaledVector(this.surfaceNormal, 0.4);
-
-    // Net orientation: face away from player or align to corridor
-    let netNormal = dir.clone().negate();
-    if (Math.abs(netNormal.y) > 0.7) {
-      netNormal = new THREE.Vector3(0, Math.sign(netNormal.y), 0);
-    } else if (Math.abs(netNormal.x) > Math.abs(netNormal.z)) {
-      netNormal = new THREE.Vector3(Math.sign(netNormal.x), 0, 0);
-    } else {
-      netNormal = new THREE.Vector3(0, 0, Math.sign(netNormal.z));
+    const hit = this.raycastWorld(this.camera.position, dir, mazeData, 60.0);
+    if (!hit) {
+      soundSynth.playHazardHit();
+      return false;
     }
 
-    pulseNetManager.deployNet(netPos, netNormal, 'player', 0x00f0ff, 4.0, 3.5);
-    this.onPulseNetDeployed?.(netPos, netNormal);
-    this.cameraShakeIntensity = 0.25;
+    // Anchor the rope at hit point!
+    this.ropeAnchor.copy(hit.point);
+    this.isRopeAttached = true;
+    this.isPullingRope = false;
 
+    // Create wire rope line mesh
+    if (this.ropeLineMesh && this.ropeLineMesh.parent) {
+      this.ropeLineMesh.parent.remove(this.ropeLineMesh);
+    }
+    const ropeGeom = new THREE.BufferGeometry().setFromPoints([
+      this.camera.position,
+      this.ropeAnchor
+    ]);
+    const ropeMat = new THREE.LineBasicMaterial({
+      color: 0xffaa00,
+      linewidth: 2,
+    });
+    this.ropeLineMesh = new THREE.Line(ropeGeom, ropeMat);
+    scene.add(this.ropeLineMesh);
+
+    // Create glowing anchor node marker
+    if (this.ropeAnchorMesh && this.ropeAnchorMesh.parent) {
+      this.ropeAnchorMesh.parent.remove(this.ropeAnchorMesh);
+    }
+    const anchorGeom = new THREE.RingGeometry(0.12, 0.24, 8);
+    const anchorMat = new THREE.MeshBasicMaterial({
+      color: 0xffaa00,
+      wireframe: true,
+      side: THREE.DoubleSide
+    });
+    this.ropeAnchorMesh = new THREE.Mesh(anchorGeom, anchorMat);
+    this.ropeAnchorMesh.position.copy(this.ropeAnchor);
+    this.ropeAnchorMesh.lookAt(this.camera.position);
+    scene.add(this.ropeAnchorMesh);
+
+    soundSynth.playRopeLaunch();
+    this.cameraShakeIntensity = 0.15;
     return true;
   }
 
   /**
-   * Compute forward and right tangents relative to current surface normal
+   * Pull the rope (second right-click) to climb towards anchor
+   */
+  public pullRope(): void {
+    if (!this.isRopeAttached) return;
+    this.isPullingRope = true;
+    soundSynth.playRopePull();
+  }
+
+  /**
+   * Release rope and cleanup visual meshes
+   */
+  public releaseRope(scene?: THREE.Scene, boost: boolean = false): void {
+    if (this.ropeLineMesh && this.ropeLineMesh.parent) {
+      this.ropeLineMesh.parent.remove(this.ropeLineMesh);
+      this.ropeLineMesh = null;
+    }
+    if (this.ropeAnchorMesh && this.ropeAnchorMesh.parent) {
+      this.ropeAnchorMesh.parent.remove(this.ropeAnchorMesh);
+      this.ropeAnchorMesh = null;
+    }
+
+    if (this.isRopeAttached) {
+      soundSynth.playRopeRelease();
+    }
+
+    this.isRopeAttached = false;
+    this.isPullingRope = false;
+
+    if (boost) {
+      // Boost upward & forward to mantle onto ledge
+      const fwd = new THREE.Vector3(-Math.sin(this.yaw), 0, -Math.cos(this.yaw));
+      this.velocity.addScaledVector(fwd, 4.0);
+      this.velocity.y += (this.gravityMultiplier > 0 ? 1 : -1) * 6.5;
+    }
+  }
+
+  /**
+   * Compute tangents relative to world horizontal plane
    */
   private computeTangents(outForward: THREE.Vector3, outRight: THREE.Vector3): void {
-    const rawFwd = new THREE.Vector3(-Math.sin(this.yaw), 0, -Math.cos(this.yaw));
-
-    // Project raw forward onto surface plane
-    outForward.copy(rawFwd).sub(this.surfaceNormal.clone().multiplyScalar(rawFwd.dot(this.surfaceNormal)));
-    if (outForward.lengthSq() < 0.001) {
-      // Degenerate: pick arbitrary orthogonal vector
-      const alt = Math.abs(this.surfaceNormal.y) > 0.8 ? new THREE.Vector3(0, 0, -1) : new THREE.Vector3(0, 1, 0);
-      outForward.crossVectors(this.surfaceNormal, alt);
-    }
-    outForward.normalize();
-
-    // Right vector is forward cross normal
-    outRight.crossVectors(outForward, this.surfaceNormal).normalize();
+    outForward.set(-Math.sin(this.yaw), 0, -Math.cos(this.yaw)).normalize();
+    outRight.set(Math.cos(this.yaw), 0, -Math.sin(this.yaw)).normalize();
   }
 
   public update(
@@ -242,15 +321,14 @@ export class PlayerController {
     mazeData: MazeData,
     settings: GameSettings,
     stats: PlayerStats,
-    scene: THREE.Scene,
-    pulseNetManager?: PulseNetManager
+    scene: THREE.Scene
   ): void {
     // 1. Process cooldown timers
     if (this.jumpBufferTimer > 0) this.jumpBufferTimer -= dt;
     if (this.coyoteTimer > 0) this.coyoteTimer -= dt;
     if (this.dashCooldownTimer > 0) this.dashCooldownTimer -= dt;
     if (this.pulseCooldown > 0) this.pulseCooldown -= dt;
-    if (this.pulseNetCooldown > 0) this.pulseNetCooldown -= dt;
+    if (this.ropeCooldown > 0) this.ropeCooldown -= dt;
     if (this.cameraShakeIntensity > 0) this.cameraShakeIntensity = Math.max(0, this.cameraShakeIntensity - dt * 3);
     if (this.landSquash > 0) this.landSquash = Math.max(0, this.landSquash - dt * 4);
 
@@ -264,52 +342,7 @@ export class PlayerController {
       }
     }
 
-    // 3. Wall Walking Surface Alignment & Cling Detection
-    const wallCheckDist = this.radius + 0.16;
-    let detectedNormal: THREE.Vector3 | null = null;
-
-    // Check contact with colliders in 6 orthogonal cardinal directions
-    const checkDirections = [
-      new THREE.Vector3(0, -1, 0),  // Floor
-      new THREE.Vector3(-1, 0, 0),  // Left Wall
-      new THREE.Vector3(1, 0, 0),   // Right Wall
-      new THREE.Vector3(0, 0, -1),  // Forward Wall
-      new THREE.Vector3(0, 0, 1),   // Back Wall
-      new THREE.Vector3(0, 1, 0),   // Ceiling
-    ];
-
-    for (const dir of checkDirections) {
-      const probeX = this.position.x + dir.x * wallCheckDist;
-      const probeY = this.position.y + dir.y * wallCheckDist;
-      const probeZ = this.position.z + dir.z * wallCheckDist;
-
-      if (this.checkCollisionAt(probeX, probeY, probeZ, mazeData, pulseNetManager)) {
-        // Normal points outwards from wall into room
-        detectedNormal = dir.clone().negate();
-        break;
-      }
-    }
-
-    // If contact detected, magnetize crawler to that surface
-    if (detectedNormal) {
-      if (detectedNormal.distanceTo(this.targetNormal) > 0.3) {
-        soundSynth.playWallMagnetize();
-        this.cameraShakeIntensity = 0.15;
-      }
-      this.targetNormal.copy(detectedNormal);
-      this.isWallWalking = Math.abs(this.targetNormal.y - 1) > 0.05;
-    } else {
-      // In mid-air with no walls near: gradually return gravity to floor
-      if (!this.isGrounded && this.position.y > 0) {
-        this.targetNormal.lerp(new THREE.Vector3(0, 1, 0), dt * 3);
-      }
-    }
-
-    // Smoothly interpolate active surface normal
-    this.surfaceNormal.lerp(this.targetNormal, dt * 10).normalize();
-    this.currentUp.lerp(this.surfaceNormal, dt * 10).normalize();
-
-    // 4. Directional inputs
+    // 3. Directional movement
     this.computeTangents(this._forward, this._right);
     this._moveDir.set(0, 0, 0);
 
@@ -329,11 +362,40 @@ export class PlayerController {
     const isMoving = this._moveDir.lengthSq() > 0.001;
     if (isMoving) this._moveDir.normalize();
 
-    // 5. Jump logic along active surface normal
+    // 4. Climbing Rope Reel / Pull Physics
+    if (this.isRopeAttached) {
+      const toAnchor = this.ropeAnchor.clone().sub(this.position);
+      const ropeDist = toAnchor.length();
+
+      if (this.isPullingRope) {
+        // Reeling toward anchor
+        if (ropeDist < 1.1) {
+          // Reached anchor! Release rope with a boost up
+          this.releaseRope(scene, true);
+        } else {
+          // Pull player rapidly towards anchor point
+          const pullDir = toAnchor.clone().normalize();
+          const pullSpeed = 22.0;
+          this.velocity.copy(pullDir.multiplyScalar(pullSpeed));
+          this.isGrounded = false;
+        }
+      }
+
+      // Update dynamic rope wire line
+      if (this.ropeLineMesh) {
+        const positions = new Float32Array([
+          this.camera.position.x, this.camera.position.y - 0.08, this.camera.position.z,
+          this.ropeAnchor.x, this.ropeAnchor.y, this.ropeAnchor.z
+        ]);
+        this.ropeLineMesh.geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+        this.ropeLineMesh.geometry.attributes.position.needsUpdate = true;
+      }
+    }
+
+    // 5. Jump logic
     if (this.jumpBufferTimer > 0) {
-      if (this.isGrounded || this.coyoteTimer > 0 || this.isWallWalking) {
-        // Leap directly away from wall / floor surface
-        this.velocity.copy(this.surfaceNormal.clone().multiplyScalar(this.jumpImpulse));
+      if (this.isGrounded || this.coyoteTimer > 0) {
+        this.velocity.y = this.gravityMultiplier * this.jumpImpulse;
         this.isGrounded = false;
         this.coyoteTimer = 0;
         this.jumpBufferTimer = 0;
@@ -346,7 +408,7 @@ export class PlayerController {
           this.onBeatComboChanged?.(stats.beatCombo);
         }
       } else if (this.canDoubleJump) {
-        this.velocity.copy(this.surfaceNormal.clone().multiplyScalar(this.jumpImpulse * 0.9));
+        this.velocity.y = this.gravityMultiplier * (this.jumpImpulse * 0.9);
         this.canDoubleJump = false;
         this.jumpBufferTimer = 0;
         soundSynth.playDoubleJump();
@@ -354,20 +416,22 @@ export class PlayerController {
     }
 
     // 6. Acceleration and Friction
-    if (!this.isDashing) {
+    if (!this.isDashing && !this.isPullingRope) {
       const targetSpeed = this.moveSpeed * (1 + Math.min(0.5, stats.beatCombo * 0.08));
-      const accel = this.isGrounded || this.isWallWalking ? 38 : 14;
-      const friction = this.isGrounded || this.isWallWalking ? 22 : 2.5;
+      const accel = this.isGrounded ? 36 : 14;
+      const friction = this.isGrounded ? 22 : 2.5;
 
       if (isMoving) {
-        this.velocity.addScaledVector(this._moveDir, accel * dt);
-        // Clamp speed along surface plane
-        const currentSpd = this.velocity.length();
-        if (currentSpd > targetSpeed) {
-          this.velocity.multiplyScalar(targetSpeed / currentSpd);
+        this.velocity.x += this._moveDir.x * accel * dt;
+        this.velocity.z += this._moveDir.z * accel * dt;
+
+        const horizSpd = Math.sqrt(this.velocity.x * this.velocity.x + this.velocity.z * this.velocity.z);
+        if (horizSpd > targetSpeed) {
+          this.velocity.x = (this.velocity.x / horizSpd) * targetSpeed;
+          this.velocity.z = (this.velocity.z / horizSpd) * targetSpeed;
         }
 
-        if (this.isGrounded || this.isWallWalking) {
+        if (this.isGrounded) {
           this.headBobTimer += dt * 14;
           if (this.headBobTimer >= Math.PI) {
             this.headBobTimer -= Math.PI;
@@ -375,19 +439,23 @@ export class PlayerController {
           }
         }
       } else {
-        const speed = this.velocity.length();
-        if (speed > 0.01) {
+        const horizSpd = Math.sqrt(this.velocity.x * this.velocity.x + this.velocity.z * this.velocity.z);
+        if (horizSpd > 0.01) {
           const drop = friction * dt;
-          const newSpd = Math.max(0, speed - drop);
-          this.velocity.multiplyScalar(newSpd / speed);
+          const newSpd = Math.max(0, horizSpd - drop);
+          this.velocity.x = (this.velocity.x / horizSpd) * newSpd;
+          this.velocity.z = (this.velocity.z / horizSpd) * newSpd;
         } else {
-          this.velocity.set(0, 0, 0);
+          this.velocity.x = 0;
+          this.velocity.z = 0;
         }
       }
     }
 
-    // 7. Gravity acting toward opposite of surface normal
-    this.velocity.addScaledVector(this.surfaceNormal, -this.gravity * dt);
+    // 7. Gravity (Normal: -Y; Inverted: +Y)
+    if (!this.isPullingRope) {
+      this.velocity.y -= this.gravityMultiplier * this.gravity * dt;
+    }
 
     // 8. Kinematic collision handling
     const wasGrounded = this.isGrounded;
@@ -395,7 +463,7 @@ export class PlayerController {
 
     // Movement X
     const newX = this.position.x + this.velocity.x * dt;
-    if (!this.checkCollisionAt(newX, this.position.y, this.position.z, mazeData, pulseNetManager)) {
+    if (!this.checkCollisionAt(newX, this.position.y, this.position.z, mazeData)) {
       this.position.x = newX;
     } else {
       this.velocity.x = 0;
@@ -403,30 +471,52 @@ export class PlayerController {
 
     // Movement Z
     const newZ = this.position.z + this.velocity.z * dt;
-    if (!this.checkCollisionAt(this.position.x, this.position.y, newZ, mazeData, pulseNetManager)) {
+    if (!this.checkCollisionAt(this.position.x, this.position.y, newZ, mazeData)) {
       this.position.z = newZ;
     } else {
       this.velocity.z = 0;
     }
 
-    // Movement Y
+    // Movement Y with normal vs inverted gravity checks
     const newY = this.position.y + this.velocity.y * dt;
-    const floorY = this.getHighestFloorUnder(this.position.x, newY, this.position.z, mazeData);
 
-    if (floorY !== null && newY - this.height <= floorY && this.velocity.y <= 0) {
-      this.position.y = floorY + this.height;
-      this.velocity.y = 0;
-      this.isGrounded = true;
-      this.coyoteTimer = 0.15;
-      this.canDoubleJump = true;
-      if (!wasGrounded) this.landSquash = 0.05;
-    } else {
-      const ceilingY = this.getLowestCeilingAbove(this.position.x, newY, this.position.z, mazeData);
-      if (ceilingY !== null && newY >= ceilingY && this.velocity.y > 0) {
-        this.position.y = ceilingY - 0.05;
+    if (this.gravityMultiplier > 0) {
+      // Normal gravity: floor below
+      const floorY = this.getHighestFloorUnder(this.position.x, newY, this.position.z, mazeData);
+      if (floorY !== null && newY - this.height <= floorY && this.velocity.y <= 0) {
+        this.position.y = floorY + this.height;
         this.velocity.y = 0;
+        this.isGrounded = true;
+        this.coyoteTimer = 0.15;
+        this.canDoubleJump = true;
+        if (!wasGrounded) this.landSquash = 0.05;
       } else {
-        if (!this.checkCollisionAt(this.position.x, newY, this.position.z, mazeData, pulseNetManager)) {
+        const ceilingY = this.getLowestCeilingAbove(this.position.x, newY, this.position.z, mazeData);
+        if (ceilingY !== null && newY >= ceilingY && this.velocity.y > 0) {
+          this.position.y = ceilingY - 0.05;
+          this.velocity.y = 0;
+        } else if (!this.checkCollisionAt(this.position.x, newY, this.position.z, mazeData)) {
+          this.position.y = newY;
+        } else {
+          this.velocity.y = 0;
+        }
+      }
+    } else {
+      // Inverted gravity: ceiling above is the floor!
+      const ceilingY = this.getLowestCeilingAbove(this.position.x, newY, this.position.z, mazeData);
+      if (ceilingY !== null && newY + this.height >= ceilingY && this.velocity.y >= 0) {
+        this.position.y = ceilingY - this.height;
+        this.velocity.y = 0;
+        this.isGrounded = true;
+        this.coyoteTimer = 0.15;
+        this.canDoubleJump = true;
+        if (!wasGrounded) this.landSquash = 0.05;
+      } else {
+        const floorY = this.getHighestFloorUnder(this.position.x, newY, this.position.z, mazeData);
+        if (floorY !== null && newY <= floorY && this.velocity.y < 0) {
+          this.position.y = floorY + 0.05;
+          this.velocity.y = 0;
+        } else if (!this.checkCollisionAt(this.position.x, newY, this.position.z, mazeData)) {
           this.position.y = newY;
         } else {
           this.velocity.y = 0;
@@ -435,7 +525,9 @@ export class PlayerController {
     }
 
     // 9. Void Fall Reset
-    if (this.position.y < -15) {
+    if (this.gravityMultiplier > 0 && this.position.y < -20) {
+      this.respawnAtLastCheckpoint(mazeData, stats);
+    } else if (this.gravityMultiplier < 0 && this.position.y > 45) {
       this.respawnAtLastCheckpoint(mazeData, stats);
     }
 
@@ -447,7 +539,7 @@ export class PlayerController {
       const distXZ = Math.sqrt(dx * dx + dz * dz);
 
       if (distXZ <= pad.size[0] / 2 && Math.abs(dy) <= 0.6) {
-        this.velocity.copy(this.surfaceNormal.clone().multiplyScalar(pad.power));
+        this.velocity.y = this.gravityMultiplier * pad.power;
         this.isGrounded = false;
         soundSynth.playJumpPad();
         this.cameraShakeIntensity = 0.35;
@@ -458,7 +550,7 @@ export class PlayerController {
     // 11. Check Checkpoints
     for (const cp of mazeData.checkpoints) {
       const dx = this.position.x - cp.position[0];
-      const dy = (this.position.y - this.height) - cp.position[1];
+      const dy = this.position.y - cp.position[1];
       const dz = this.position.z - cp.position[2];
       const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
 
@@ -466,9 +558,13 @@ export class PlayerController {
         if (!cp.activated) {
           cp.activated = true;
           soundSynth.playCheckpoint();
-          soundSynth.sectorIntensity = Math.min(4, cp.sectorIndex);
           stats.currentSector = cp.sectorIndex;
           stats.checkpointName = cp.name;
+
+          // Check if entering an upside-down level (even sectors 2, 4, 6)
+          const isEvenSector = cp.sectorIndex % 2 === 0;
+          this.setGravityInverted(isEvenSector);
+          soundSynth.playGravityFlip();
 
           const meshData = mazeData.animatedMeshes.checkpointMeshes.get(cp.id);
           if (meshData) {
@@ -478,69 +574,82 @@ export class PlayerController {
 
           this.onCheckpointActivated?.(cp.name, cp.sectorIndex);
 
-          if (cp.id === 'cp_victory') {
+          if (cp.sectorIndex === 6 && cp.id === 'cp_victory') {
             this.onVictoryReached?.();
           }
         }
       }
     }
 
-    // 12. Chronocubes collection
+    // 12. Check Chronocubes
     for (const cube of mazeData.chronocubes) {
       if (cube.collected) continue;
-      const dist = this.position.distanceTo(new THREE.Vector3(...cube.position));
-      if (dist <= 1.0) {
+      const dx = this.position.x - cube.position[0];
+      const dy = this.position.y - cube.position[1];
+      const dz = this.position.z - cube.position[2];
+      const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
+
+      if (dist <= 1.4) {
         cube.collected = true;
         stats.cubesCollected++;
-        stats.score += 500 * (1 + stats.beatCombo * 0.2);
+        stats.score += 500;
         soundSynth.playCubeCollect();
+        this.cameraShakeIntensity = 0.2;
+
         const mesh = mazeData.animatedMeshes.cubeMeshes.get(cube.id);
-        if (mesh) mesh.visible = false;
+        if (mesh) {
+          scene.remove(mesh);
+        }
+
         this.onCubeCollected?.(cube.id);
       }
     }
 
-    // 13. Lasers check
-    const currentBeatMod4 = Math.floor(beatInfo.beat) % 4;
+    // 13. Check Laser hazards
+    const currentBeat = (Math.floor(soundSynth.getBeatProgress().beat) % 4) + 1;
     for (const laser of mazeData.lasers) {
-      if (!laser.activeBeats.includes(currentBeatMod4)) continue;
-      const p1 = new THREE.Vector3(...laser.start);
-      const p2 = new THREE.Vector3(...laser.end);
-      const seg = p2.clone().sub(p1);
-      const segLen = seg.length();
-      const segDir = seg.clone().normalize();
+      if (laser.activeBeats.includes(currentBeat)) {
+        const p1 = new THREE.Vector3(...laser.start);
+        const p2 = new THREE.Vector3(...laser.end);
+        const seg = p2.clone().sub(p1);
+        const segLen = seg.length();
+        seg.normalize();
 
-      const toPlayer = this.position.clone().sub(p1);
-      const proj = toPlayer.dot(segDir);
+        const toPlayer = this.position.clone().sub(p1);
+        const proj = toPlayer.dot(seg);
 
-      if (proj >= 0 && proj <= segLen) {
-        const closestPt = p1.clone().addScaledVector(segDir, proj);
-        if (this.position.distanceTo(closestPt) <= 0.4) {
-          stats.health = Math.max(0, stats.health - laser.damage * dt * 4);
-          this.cameraShakeIntensity = 0.4;
-          soundSynth.playHazardHit();
-          stats.beatCombo = 0;
-          this.onDamageTaken?.(laser.damage * dt);
+        if (proj >= 0 && proj <= segLen) {
+          const closest = p1.clone().addScaledVector(seg, proj);
+          if (closest.distanceTo(this.position) < 0.6) {
+            stats.health -= laser.damage * dt * 3;
+            soundSynth.playLaserSizzle();
+            this.cameraShakeIntensity = 0.3;
+            this.onDamageTaken?.(laser.damage * dt * 3);
+          }
         }
       }
     }
 
-    // 14. Projectiles update
+    // 14. Update Pulse Projectiles
     for (let i = this.projectiles.length - 1; i >= 0; i--) {
       const proj = this.projectiles[i];
       proj.life += dt;
       proj.position.addScaledVector(proj.velocity, dt);
       proj.mesh.position.copy(proj.position);
 
-      let hit = this.checkCollisionAt(proj.position.x, proj.position.y, proj.position.z, mazeData, pulseNetManager);
+      let hit = false;
+      if (this.checkCollisionAt(proj.position.x, proj.position.y, proj.position.z, mazeData)) {
+        hit = true;
+      }
 
-      // Check switch targets
+      // Check switch target hits
       for (const sw of mazeData.switches) {
-        const swPos = new THREE.Vector3(...sw.position);
-        if (proj.position.distanceTo(swPos) <= sw.radius) {
+        if (!sw.activated && proj.position.distanceTo(new THREE.Vector3(...sw.position)) < sw.radius) {
+          sw.activated = true;
           hit = true;
-          sw.activated = !sw.activated;
           soundSynth.playSwitchHit();
+          stats.score += 250;
+
           if (sw.linkedGateId) {
             const gate = mazeData.shiftingGates.find(g => g.id === sw.linkedGateId);
             if (gate) {
@@ -552,7 +661,7 @@ export class PlayerController {
         }
       }
 
-      // Check hit with hazard crawler bots
+      // Check hit with hazard sentinel bots
       if (!hit && this.onCheckProjectileHit && this.onCheckProjectileHit(proj.position)) {
         hit = true;
       }
@@ -563,52 +672,97 @@ export class PlayerController {
       }
     }
 
-    // 15. Camera transform in pure Cockpit View (zero crawler visible)
+    // 15. Smooth Camera Transform with Upside-Down Inversion
     this.baseFov = settings.fov;
     const targetFov = this.isDashing ? this.baseFov + 14 : this.baseFov;
     this.currentFov = THREE.MathUtils.damp(this.currentFov, targetFov, 12, dt);
     this.camera.fov = this.currentFov;
     this.camera.updateProjectionMatrix();
 
-    // Align camera UP vector with current surface normal (enabling seamless wall walking!)
-    this.camera.up.copy(this.currentUp);
+    // Smoothly interpolate camera roll between 0 and 180 deg (Math.PI)
+    this.currentRoll = THREE.MathUtils.damp(this.currentRoll, this.cameraRoll, 6, dt);
 
-    const bobOffset = Math.sin(this.headBobTimer * 2) * (isMoving && (this.isGrounded || this.isWallWalking) ? 0.02 : 0);
+    // Compute Camera UP vector with roll
+    const upY = Math.cos(this.currentRoll);
+    const upX = Math.sin(this.currentRoll);
+    this.camera.up.set(upX, upY, 0).normalize();
+
+    const bobOffset = Math.sin(this.headBobTimer * 2) * (isMoving && this.isGrounded ? 0.02 : 0);
     const shakeX = (Math.random() * 2 - 1) * this.cameraShakeIntensity * 0.08;
     const shakeY = (Math.random() * 2 - 1) * this.cameraShakeIntensity * 0.08;
 
-    // Eye position in cockpit
     const eyePos = this.position.clone();
-    eyePos.addScaledVector(this.surfaceNormal, bobOffset - this.landSquash);
+    eyePos.y += this.gravityMultiplier * (bobOffset - this.landSquash);
     eyePos.x += shakeX;
     eyePos.y += shakeY;
-
     this.camera.position.copy(eyePos);
 
-    // Compute look-at point from yaw and pitch aligned with surface normal
-    this.computeTangents(this._forward, this._right);
-    const lookDir = this._forward.clone().multiplyScalar(Math.cos(this.pitch));
-    lookDir.addScaledVector(this.surfaceNormal, Math.sin(this.pitch));
-    lookDir.normalize();
+    // Look vector from yaw and pitch
+    const lookDir = new THREE.Vector3(
+      -Math.sin(this.yaw) * Math.cos(this.pitch),
+      Math.sin(this.pitch),
+      -Math.cos(this.yaw) * Math.cos(this.pitch)
+    ).normalize();
 
     this.camera.lookAt(eyePos.clone().add(lookDir));
 
-    // Hide player's own crawler mesh completely in cockpit view
-    this.crawler.group.visible = false;
-
-    // Update crawler transform for other players/reflection
-    const horizSpeed = this.velocity.length();
-    this.crawler.setPositionAndRotation(this.position, this.yaw, this.surfaceNormal);
-    this.crawler.update(dt, horizSpeed, this.isGrounded || this.isWallWalking);
-
-    // Dynamic stats update
+    // Update PlayerStats for UI sync
     stats.dashCharge = Math.min(stats.maxDashCharge, stats.maxDashCharge * (1 - Math.max(0, this.dashCooldownTimer) / 1.1));
+    stats.isGravityInverted = this.gravityMultiplier < 0;
+    stats.isRopeAttached = this.isRopeAttached;
+    stats.isPullingRope = this.isPullingRope;
   }
 
   /**
-   * Collision check at specific point against maze colliders, shifting gates, and pulse nets
+   * Raycast box intersection for climbing rope
    */
-  public checkCollisionAt(x: number, y: number, z: number, mazeData: MazeData, pulseNetManager?: PulseNetManager): boolean {
+  private raycastWorld(
+    origin: THREE.Vector3,
+    direction: THREE.Vector3,
+    mazeData: MazeData,
+    maxDistance: number
+  ): { point: THREE.Vector3; distance: number } | null {
+    let closestDist: number = maxDistance;
+    let closestPoint: THREE.Vector3 | null = null;
+
+    for (const box of mazeData.colliders) {
+      let tmin = 0.0;
+      let tmax = closestDist;
+      let hit = true;
+
+      for (const axis of ['x', 'y', 'z'] as const) {
+        const invD = 1.0 / (direction[axis] !== 0 ? direction[axis] : 0.0000001);
+        const minVal = axis === 'x' ? box.minX : axis === 'y' ? box.minY : box.minZ;
+        const maxVal = axis === 'x' ? box.maxX : axis === 'y' ? box.maxY : box.maxZ;
+        let t0 = (minVal - origin[axis]) * invD;
+        let t1 = (maxVal - origin[axis]) * invD;
+        if (invD < 0.0) {
+          const tmp = t0; t0 = t1; t1 = tmp;
+        }
+        tmin = Math.max(tmin, t0);
+        tmax = Math.min(tmax, t1);
+        if (tmax <= tmin) {
+          hit = false;
+          break;
+        }
+      }
+
+      if (hit && tmin > 0.3 && tmin < closestDist) {
+        closestDist = tmin;
+        closestPoint = origin.clone().addScaledVector(direction, tmin);
+      }
+    }
+
+    if (closestPoint) {
+      return { point: closestPoint, distance: closestDist };
+    }
+    return null;
+  }
+
+  /**
+   * Check static & gate collision
+   */
+  public checkCollisionAt(x: number, y: number, z: number, mazeData: MazeData): boolean {
     const minX = x - this.radius;
     const maxX = x + this.radius;
     const minY = y - this.height;
@@ -616,7 +770,6 @@ export class PlayerController {
     const minZ = z - this.radius;
     const maxZ = z + this.radius;
 
-    // Static maze walls
     for (const box of mazeData.colliders) {
       if (box.maxY <= minY || box.minY >= maxY) continue;
       if (maxX > box.minX && minX < box.maxX && maxZ > box.minZ && minZ < box.maxZ) {
@@ -624,7 +777,6 @@ export class PlayerController {
       }
     }
 
-    // Dynamic shifting gates
     for (const gate of mazeData.shiftingGates) {
       const mesh = mazeData.animatedMeshes.gateMeshes.get(gate.id);
       if (!mesh) continue;
@@ -642,11 +794,6 @@ export class PlayerController {
       ) {
         return true;
       }
-    }
-
-    // Pulse Net barriers ("disable walkthrough net")
-    if (pulseNetManager && pulseNetManager.checkNetCollision(x, y, z, this.radius)) {
-      return true;
     }
 
     return false;
@@ -701,7 +848,8 @@ export class PlayerController {
     let activeCp = mazeData.checkpoints.filter(cp => cp.activated).pop();
     if (!activeCp) activeCp = mazeData.checkpoints[0];
 
-    this.setSpawnPosition(activeCp.position, 0);
+    const isEven = activeCp.sectorIndex % 2 === 0;
+    this.setSpawnPosition(activeCp.position, 0, isEven);
     this.velocity.set(0, 0, 0);
     stats.health = stats.maxHealth;
     stats.beatCombo = 0;

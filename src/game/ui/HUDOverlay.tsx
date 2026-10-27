@@ -55,14 +55,14 @@ export const HUDOverlay: React.FC<HUDOverlayProps> = ({
     return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}.${ms.toString().padStart(2, '0')}`;
   };
 
-  const sectorColors = ['#00f0ff', '#00f0ff', '#ff007f', '#ffaa00', '#00ff96'];
+  const sectorColors = ['#00f0ff', '#00f0ff', '#ffaa00', '#00ff96', '#ff007f', '#ffaa00', '#00f0ff'];
   const activeColor = sectorColors[Math.min(sectorColors.length - 1, stats.currentSector)];
 
   return (
     <div className="absolute inset-0 pointer-events-none select-none z-10 flex flex-col justify-between p-4 sm:p-5">
       {/* Top Bar Status Clusters */}
       <div className="flex items-start justify-between w-full">
-        {/* Top Left: Timer, Sector & Wall-Magnet Indicator */}
+        {/* Top Left: Timer, Sector & Gravity Indicator */}
         <div className="flex flex-col gap-1 pointer-events-auto">
           <div className="flex items-center gap-2 px-3 py-1.5 bg-black/70 border border-white/20">
             <span className="text-[10px] tracking-widest text-white/50 uppercase font-mono">TIMER</span>
@@ -71,17 +71,22 @@ export const HUDOverlay: React.FC<HUDOverlayProps> = ({
             </span>
           </div>
           <div className="flex items-center gap-2 px-3 py-1 bg-black/60 border border-white/10 text-xs font-mono text-white/70">
-            <span className="text-[10px] text-white/40">SECTOR</span>
+            <span className="text-[10px] text-white/40">LEVEL</span>
             <span className="text-white font-semibold" style={{ color: activeColor }}>
-              0{stats.currentSector} / 04
+              0{stats.currentSector} / 06
             </span>
           </div>
 
-          {/* Wall-Walking Magnetic Indicator */}
-          {isWallWalking && (
-            <div className="flex items-center gap-1.5 px-2.5 py-1 bg-cyan-950/80 border border-cyan-400 font-mono text-[10px] text-cyan-300 shadow-[0_0_12px_rgba(0,240,255,0.4)] animate-pulse">
-              <Compass className="w-3.5 h-3.5" />
-              <span className="font-bold">WALL-WALK CLING ENGAGED</span>
+          {/* Upside Down Inverted Gravity Indicator */}
+          {stats.isGravityInverted ? (
+            <div className="flex items-center gap-1.5 px-2.5 py-1 bg-amber-950/80 border border-amber-400 font-mono text-[10px] text-amber-300 shadow-[0_0_14px_rgba(255,170,0,0.5)] animate-pulse">
+              <Compass className="w-3.5 h-3.5 text-amber-400" />
+              <span className="font-bold">GRAVITY: INVERTED 🔄 [CEILING RUN]</span>
+            </div>
+          ) : (
+            <div className="flex items-center gap-1.5 px-2.5 py-0.5 bg-black/60 border border-white/15 font-mono text-[9px] text-white/50">
+              <Compass className="w-3 h-3 text-white/40" />
+              <span>GRAVITY: NORMAL</span>
             </div>
           )}
 
@@ -225,23 +230,34 @@ export const HUDOverlay: React.FC<HUDOverlayProps> = ({
               </div>
             </div>
 
-            {/* Pulse Net Ability Capacitor */}
-            <div className="flex flex-col gap-1 p-2 bg-black/75 border border-cyan-400/50 min-w-[210px]">
+            {/* Climbing Rope Status */}
+            <div className={`flex flex-col gap-1 p-2 bg-black/75 border min-w-[220px] transition-all duration-150 ${
+              stats.isPullingRope
+                ? 'border-amber-400 shadow-[0_0_12px_rgba(255,170,0,0.4)]'
+                : stats.isRopeAttached
+                ? 'border-cyan-400 shadow-[0_0_10px_rgba(0,240,255,0.3)]'
+                : 'border-white/20'
+            }`}>
               <div className="flex items-center justify-between text-[10px] font-mono tracking-wider">
-                <span className="flex items-center gap-1 text-cyan-300 font-bold">
-                  <Grid className="w-3 h-3 text-cyan-400" /> PULSE NET [E / R-CLICK]
+                <span className="flex items-center gap-1 font-bold" style={{ color: stats.isPullingRope ? '#ffaa00' : stats.isRopeAttached ? '#00f0ff' : 'rgba(255,255,255,0.7)' }}>
+                  <Grid className="w-3 h-3" />
+                  {stats.isPullingRope
+                    ? 'ROPE: REELING ASCENT'
+                    : stats.isRopeAttached
+                    ? 'ROPE: ANCHORED [CLIMB]'
+                    : 'ROPE: CLIMBING TETHER'}
                 </span>
-                <span className="font-bold text-cyan-400 tabular-nums">
-                  {pulseNetCooldown <= 0.05 ? 'READY' : `${Math.ceil(pulseNetCooldown)}s`}
+                <span className="font-bold tabular-nums text-[9px]" style={{ color: stats.isPullingRope ? '#ffaa00' : stats.isRopeAttached ? '#00f0ff' : 'rgba(255,255,255,0.5)' }}>
+                  {stats.isPullingRope ? 'PULLING ⚡' : stats.isRopeAttached ? 'PULL [R-CLICK]' : 'READY [R-CLICK]'}
                 </span>
               </div>
               <div className="w-full h-1.5 bg-white/10 overflow-hidden">
                 <div
                   className="h-full transition-all duration-100"
                   style={{
-                    width: `${Math.max(0, 1 - pulseNetCooldown / 3.5) * 100}%`,
-                    backgroundColor: pulseNetCooldown <= 0.05 ? '#00f0ff' : 'rgba(0, 240, 255, 0.4)',
-                    boxShadow: pulseNetCooldown <= 0.05 ? '0 0 8px #00f0ff' : 'none',
+                    width: stats.isPullingRope ? '100%' : stats.isRopeAttached ? '60%' : '100%',
+                    backgroundColor: stats.isPullingRope ? '#ffaa00' : stats.isRopeAttached ? '#00f0ff' : '#44ffaa',
+                    boxShadow: stats.isPullingRope ? '0 0 8px #ffaa00' : stats.isRopeAttached ? '0 0 8px #00f0ff' : 'none',
                   }}
                 />
               </div>
@@ -256,11 +272,11 @@ export const HUDOverlay: React.FC<HUDOverlayProps> = ({
           <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 bg-black/70 border border-white/10 text-[11px] font-mono text-white/50">
             <span>[WASD] MOVE</span>
             <span>•</span>
-            <span>[SPACE] WALL LEAP</span>
+            <span>[SPACE] JUMP / RELEASE ROPE</span>
             <span>•</span>
-            <span>[E/R-CLICK] PULSE NET</span>
+            <span className="text-amber-400 font-bold">[R-CLICK / E] FIRE ROPE / PULL</span>
             <span>•</span>
-            <span>[CLICK/F] PULSE</span>
+            <span className="text-cyan-400">[L-CLICK / F] PULSE</span>
             <span>•</span>
             <span>[SHIFT] DASH</span>
             <span>•</span>

@@ -1,253 +1,290 @@
 import * as THREE from 'three';
 
-export interface LegJoints {
-  base: THREE.Vector3;   // attached to chassis
-  knee: THREE.Vector3;   // high peak apex
-  elbow: THREE.Vector3;  // mid angle
-  foot: THREE.Vector3;   // contact with floor
-  targetFoot: THREE.Vector3;
-  liftProgress: number;  // 0 to 1
-  isGrounded: boolean;
+export interface SentinelTentacle {
+  baseAngle: number;
+  segments: THREE.Vector3[];
+  currentTip: THREE.Vector3;
+  targetTip: THREE.Vector3;
+  flareMultiplier: number;
 }
 
+/**
+ * Cyber Sentinel / Jellyfish Crawler
+ * Exactly modeled after Blender wireframe images Enemy01_b234f765.png, enemy02_ba84c091.png, and enemy03_6437d883.png:
+ * - 8-sided faceted geodesic dome head with concentric inner ring and apex crown
+ * - 8 multi-jointed segmented tentacles that undulate and flare in 3D space
+ * - Radiant orange wireframe aesthetic (0xff7700) matching Blender viewport
+ */
 export class CyberCrawler {
   public group: THREE.Group;
   public colorHex: number;
   public isPlayer: boolean;
 
-  // Geometry references for real-time line animation
-  private chassisMesh: THREE.LineSegments;
+  // Visual Meshes
+  private headWire: THREE.LineSegments;
   private coreMesh: THREE.Mesh;
   private coreLight: THREE.PointLight;
-  private legLines: THREE.LineSegments[] = [];
-  private jointDots: THREE.Points[] = [];
+  private tentacleWire: THREE.LineSegments;
+  private tentacleGeom: THREE.BufferGeometry;
+  private tentaclePositions: Float32Array;
 
-  // 6 Spider legs: 3 on left, 3 on right
-  // Index 0, 1, 2 = Left (Front, Mid, Rear)
-  // Index 3, 4, 5 = Right (Front, Mid, Rear)
-  private legs: LegJoints[] = [];
-  private walkCycleTime: number = 0;
-  private baseChassisY: number = 1.3;
-  public surfaceNormal: THREE.Vector3 = new THREE.Vector3(0, 1, 0);
+  // 8 Tentacles with 4 vertices (3 segments) each
+  private tentacles: SentinelTentacle[] = [];
+  private animTimer: number = 0;
+  public isAlert: boolean = false;
+  public hoverHeight: number = 0.85;
 
   constructor(colorHex: number = 0xff7700, isPlayer: boolean = false) {
     this.colorHex = colorHex;
     this.isPlayer = isPlayer;
     this.group = new THREE.Group();
-    // Exactly 4 times smaller scale as requested
-    this.group.scale.set(0.25, 0.25, 0.25);
 
-    // 1. Build Central Inverted Diamond / Pyramidal Chassis matching reference image
-    const chassisGeom = new THREE.BufferGeometry();
-    // 4 top perimeter vertices
-    const hw = 0.55;
-    const hd = 0.65;
-    const topY = 0.25;
-    const botY = -0.35;
+    // 4x smaller scale for player/crawler as requested
+    this.group.scale.set(0.3, 0.3, 0.3);
 
-    const v1 = new THREE.Vector3(-hw, topY, -hd);
-    const v2 = new THREE.Vector3(hw, topY, -hd);
-    const v3 = new THREE.Vector3(hw, topY, hd);
-    const v4 = new THREE.Vector3(-hw, topY, hd);
-    const vBottom = new THREE.Vector3(0, botY, 0);
+    // =========================================================================
+    // 1. Build Faceted Geodesic Dome Head matching Blender viewport screenshots
+    // =========================================================================
+    const headGeom = new THREE.BufferGeometry();
+    const headPts: THREE.Vector3[] = [];
 
-    const chassisPoints = [
-      // Top loop
-      v1, v2,  v2, v3,  v3, v4,  v4, v1,
-      // Diagonals / inverted pyramid ribs meeting at bottom point
-      v1, vBottom,
-      v2, vBottom,
-      v3, vBottom,
-      v4, vBottom,
-    ];
-    chassisGeom.setFromPoints(chassisPoints);
+    const baseRadius = 0.72;
+    const midRadius = 0.54;
+    const innerRadius = 0.34;
+    const baseY = 0.0;
+    const midY = 0.32;
+    const innerY = 0.32;
+    const apexY = 0.54;
+    const apex = new THREE.Vector3(0, apexY, 0);
 
-    const lineMat = new THREE.LineBasicMaterial({
-      color: colorHex,
+    const baseVertices: THREE.Vector3[] = [];
+    const midVertices: THREE.Vector3[] = [];
+    const innerVertices: THREE.Vector3[] = [];
+
+    // Calculate 8 vertices around circle for each tier
+    for (let i = 0; i < 8; i++) {
+      const angle = (i * Math.PI * 2) / 8;
+      const cosA = Math.cos(angle);
+      const sinA = Math.sin(angle);
+
+      baseVertices.push(new THREE.Vector3(cosA * baseRadius, baseY, sinA * baseRadius));
+      midVertices.push(new THREE.Vector3(cosA * midRadius, midY, sinA * midRadius));
+      innerVertices.push(new THREE.Vector3(cosA * innerRadius, innerY, sinA * innerRadius));
+    }
+
+    // Connect Octagon rings
+    for (let i = 0; i < 8; i++) {
+      const next = (i + 1) % 8;
+
+      // Base perimeter ring
+      headPts.push(baseVertices[i], baseVertices[next]);
+
+      // Mid perimeter ring
+      headPts.push(midVertices[i], midVertices[next]);
+
+      // Inner concentric ring (distinctive in Blender top view)
+      headPts.push(innerVertices[i], innerVertices[next]);
+
+      // Vertical/slanted ribs from base to mid
+      headPts.push(baseVertices[i], midVertices[i]);
+
+      // Radial ribs from mid to inner ring
+      headPts.push(midVertices[i], innerVertices[i]);
+
+      // Diagonal cross brace on each facet
+      headPts.push(baseVertices[i], midVertices[next]);
+
+      // Crown ribs from inner ring to top apex
+      headPts.push(innerVertices[i], apex);
+    }
+
+    headGeom.setFromPoints(headPts);
+
+    const wireMat = new THREE.LineBasicMaterial({
+      color: this.colorHex,
       linewidth: 2,
     });
-    this.chassisMesh = new THREE.LineSegments(chassisGeom, lineMat);
-    this.chassisMesh.position.y = this.baseChassisY;
-    this.group.add(this.chassisMesh);
+    this.headWire = new THREE.LineSegments(headGeom, wireMat);
+    this.headWire.position.y = this.hoverHeight;
+    this.group.add(this.headWire);
 
-    // Glowing energy core inside the chassis
-    const coreGeom = new THREE.OctahedronGeometry(0.2, 0);
+    // Glowing energy core inside the sentinel dome
+    const coreGeom = new THREE.OctahedronGeometry(0.18, 0);
     const coreMat = new THREE.MeshBasicMaterial({
-      color: colorHex,
+      color: this.colorHex,
       wireframe: true,
     });
     this.coreMesh = new THREE.Mesh(coreGeom, coreMat);
-    this.coreMesh.position.y = this.baseChassisY;
+    this.coreMesh.position.y = this.hoverHeight + 0.22;
     this.group.add(this.coreMesh);
 
-    this.coreLight = new THREE.PointLight(colorHex, isPlayer ? 2.5 : 1.5, 8);
-    this.coreLight.position.y = this.baseChassisY;
+    this.coreLight = new THREE.PointLight(this.colorHex, isPlayer ? 2.5 : 1.8, 9);
+    this.coreLight.position.y = this.hoverHeight + 0.22;
     this.group.add(this.coreLight);
 
-    // 2. Build 6 Spider Legs with high peaked joints matching reference image
-    // Angles for the 6 legs
-    const legMounts: { side: number; zOffset: number; kneePeak: [number, number, number]; defaultFoot: [number, number, number] }[] = [
-      // Left Front
-      { side: -1, zOffset: -0.5, kneePeak: [-1.4, 2.7, -1.5], defaultFoot: [-1.6, 0, -1.8] },
-      // Left Mid
-      { side: -1, zOffset: 0.0, kneePeak: [-1.9, 2.5, 0.0], defaultFoot: [-2.1, 0, 0.0] },
-      // Left Rear
-      { side: -1, zOffset: 0.5, kneePeak: [-1.4, 2.6, 1.4], defaultFoot: [-1.7, 0, 1.7] },
-      // Right Front
-      { side: 1, zOffset: -0.5, kneePeak: [1.4, 2.7, -1.5], defaultFoot: [1.6, 0, -1.8] },
-      // Right Mid
-      { side: 1, zOffset: 0.0, kneePeak: [1.9, 2.5, 0.0], defaultFoot: [2.1, 0, 0.0] },
-      // Right Rear
-      { side: 1, zOffset: 0.5, kneePeak: [1.4, 2.6, 1.4], defaultFoot: [1.7, 0, 1.7] },
-    ];
+    // =========================================================================
+    // 2. Build 8 Multi-jointed Tentacles attached to dome base rim
+    // =========================================================================
+    // 8 tentacles x 3 segments per tentacle = 24 segments = 48 vertices
+    const totalLines = 8 * 3;
+    this.tentaclePositions = new Float32Array(totalLines * 2 * 3);
+    this.tentacleGeom = new THREE.BufferGeometry();
+    this.tentacleGeom.setAttribute(
+      'position',
+      new THREE.BufferAttribute(this.tentaclePositions, 3)
+    );
 
-    for (let i = 0; i < 6; i++) {
-      const cfg = legMounts[i];
-      const basePos = new THREE.Vector3(cfg.side * hw, this.baseChassisY, cfg.zOffset);
-      const kneePos = new THREE.Vector3(cfg.kneePeak[0], cfg.kneePeak[1], cfg.kneePeak[2]);
-      const elbowPos = new THREE.Vector3(cfg.defaultFoot[0] * 0.85, 1.0, cfg.defaultFoot[2] * 0.85);
-      const footPos = new THREE.Vector3(cfg.defaultFoot[0], 0, cfg.defaultFoot[2]);
+    this.tentacleWire = new THREE.LineSegments(this.tentacleGeom, wireMat);
+    this.tentacleWire.position.y = this.hoverHeight;
+    this.group.add(this.tentacleWire);
 
-      this.legs.push({
-        base: basePos,
-        knee: kneePos,
-        elbow: elbowPos,
-        foot: footPos.clone(),
-        targetFoot: footPos.clone(),
-        liftProgress: 0,
-        isGrounded: true,
+    for (let i = 0; i < 8; i++) {
+      const angle = (i * Math.PI * 2) / 8;
+      // Joint 0: base attached to rim
+      const j0 = baseVertices[i].clone();
+      // Joint 1: upper joint
+      const j1 = new THREE.Vector3(
+        j0.x * 1.15,
+        j0.y - 0.55,
+        j0.z * 1.15
+      );
+      // Joint 2: mid joint
+      const j2 = new THREE.Vector3(
+        j1.x * 1.25,
+        j1.y - 0.75,
+        j1.z * 1.25
+      );
+      // Joint 3: tip
+      const j3 = new THREE.Vector3(
+        j2.x * 1.35,
+        j2.y - 0.75,
+        j2.z * 1.35
+      );
+
+      // Distinguish side tentacles that flare up in enemy02_ba84c091.png
+      const isSideFlare = i === 2 || i === 6;
+
+      this.tentacles.push({
+        baseAngle: angle,
+        segments: [j0, j1, j2, j3],
+        currentTip: j3.clone(),
+        targetTip: j3.clone(),
+        flareMultiplier: isSideFlare ? 1.6 : 1.0,
       });
-
-      // Leg line geometry (base -> knee -> elbow -> foot)
-      const legGeom = new THREE.BufferGeometry();
-      const pts = [
-        basePos.clone(), kneePos.clone(),
-        kneePos.clone(), elbowPos.clone(),
-        elbowPos.clone(), footPos.clone(),
-      ];
-      legGeom.setFromPoints(pts);
-
-      const legLine = new THREE.LineSegments(legGeom, lineMat);
-      this.group.add(legLine);
-      this.legLines.push(legLine);
-
-      // Glowing vertex joint dots
-      const dotGeom = new THREE.BufferGeometry().setFromPoints([kneePos.clone(), elbowPos.clone(), footPos.clone()]);
-      const dotMat = new THREE.PointsMaterial({
-        color: 0xffffff,
-        size: 0.08,
-      });
-      const jointDot = new THREE.Points(dotGeom, dotMat);
-      this.group.add(jointDot);
-      this.jointDots.push(jointDot);
     }
+
+    this.updateTentacleGeometry();
   }
 
-  public update(dt: number, speed: number = 0, isGrounded: boolean = true): void {
-    const isMoving = speed > 0.1 && isGrounded;
-    if (isMoving) {
-      this.walkCycleTime += dt * Math.min(14, 6 + speed * 0.8);
-    } else {
-      this.walkCycleTime += dt * 1.5; // gentle idle breathing
-    }
-
-    const t = this.walkCycleTime;
-
-    // Body bob and tilt
-    const bob = isMoving ? Math.sin(t * 2) * 0.08 : Math.sin(t) * 0.03;
-    const tilt = isMoving ? Math.sin(t) * 0.04 : 0;
-    this.chassisMesh.position.y = this.baseChassisY + bob;
-    this.coreMesh.position.y = this.baseChassisY + bob;
-    this.coreLight.position.y = this.baseChassisY + bob;
-    this.chassisMesh.rotation.z = tilt;
-    this.chassisMesh.rotation.x = isMoving ? Math.sin(t * 2) * 0.03 : 0;
-
-    // Animate core rotating
-    this.coreMesh.rotation.x += dt * 2;
-    this.coreMesh.rotation.y += dt * 3;
-
-    // Animate 6 Legs with alternating tripod gait
-    // Group A: Legs 0 (Left Front), 2 (Left Rear), 4 (Right Mid)
-    // Group B: Legs 1 (Left Mid), 3 (Right Front), 5 (Right Rear)
-    for (let i = 0; i < 6; i++) {
-      const isGroupA = (i === 0 || i === 2 || i === 4);
-      const legPhase = isGroupA ? t : t + Math.PI;
-
-      // Leg step height and swing
-      const stepLift = isMoving ? Math.max(0, Math.sin(legPhase)) * 0.5 : Math.sin(t + i) * 0.04;
-      const stepReach = isMoving ? Math.cos(legPhase) * 0.4 : 0;
-
-      const leg = this.legs[i];
-      const cfgMountY = this.baseChassisY + bob;
-
-      // Knee peak shifts dynamically as spider walks
-      const kneeY = leg.knee.y + stepLift * 0.4 + bob * 0.5;
-      const elbowY = Math.max(0.4, leg.elbow.y + stepLift * 0.6);
-      const footY = Math.max(0, stepLift);
-      const footZ = leg.targetFoot.z + stepReach;
-
-      // Update line buffer geometry points
-      const posAttr = this.legLines[i].geometry.attributes.position as THREE.BufferAttribute;
-      const arr = posAttr.array as Float32Array;
-
-      // Point 0 (Base):
-      arr[0] = leg.base.x;
-      arr[1] = cfgMountY;
-      arr[2] = leg.base.z;
-
-      // Point 1 (Knee):
-      arr[3] = leg.knee.x;
-      arr[4] = kneeY;
-      arr[5] = leg.knee.z + stepReach * 0.2;
-
-      // Point 2 (Knee):
-      arr[6] = leg.knee.x;
-      arr[7] = kneeY;
-      arr[8] = leg.knee.z + stepReach * 0.2;
-
-      // Point 3 (Elbow):
-      arr[9] = leg.elbow.x;
-      arr[10] = elbowY;
-      arr[11] = leg.elbow.z + stepReach * 0.5;
-
-      // Point 4 (Elbow):
-      arr[12] = leg.elbow.x;
-      arr[13] = elbowY;
-      arr[14] = leg.elbow.z + stepReach * 0.5;
-
-      // Point 5 (Foot contact):
-      arr[15] = leg.foot.x;
-      arr[16] = footY;
-      arr[17] = footZ;
-
-      posAttr.needsUpdate = true;
-
-      // Update joint dots
-      const dotAttr = this.jointDots[i].geometry.attributes.position as THREE.BufferAttribute;
-      const dArr = dotAttr.array as Float32Array;
-      dArr[0] = leg.knee.x; dArr[1] = kneeY; dArr[2] = leg.knee.z + stepReach * 0.2;
-      dArr[3] = leg.elbow.x; dArr[4] = elbowY; dArr[5] = leg.elbow.z + stepReach * 0.5;
-      dArr[6] = leg.foot.x; dArr[7] = footY; dArr[8] = footZ;
-      dotAttr.needsUpdate = true;
-    }
-  }
-
-  public setPositionAndRotation(pos: THREE.Vector3, yaw: number, surfaceNormal?: THREE.Vector3): void {
+  public setPositionAndRotation(pos: THREE.Vector3, yaw: number, upDir?: THREE.Vector3): void {
     this.group.position.copy(pos);
-    if (!surfaceNormal || Math.abs(surfaceNormal.y - 1) < 0.05) {
-      // Standard floor orientation
-      this.group.quaternion.setFromAxisAngle(new THREE.Vector3(0, 1, 0), yaw);
-    } else {
-      // Wall / ceiling orientation: orient group up vector to surface normal
-      const targetUp = surfaceNormal.clone().normalize();
+    this.group.rotation.set(0, 0, 0);
+    this.group.rotateY(yaw);
+
+    if (upDir && Math.abs(upDir.y - 1) > 0.05) {
       const defaultUp = new THREE.Vector3(0, 1, 0);
-      const quatAlign = new THREE.Quaternion().setFromUnitVectors(defaultUp, targetUp);
-      const quatYaw = new THREE.Quaternion().setFromAxisAngle(targetUp, yaw);
-      this.group.quaternion.copy(quatAlign.multiply(quatYaw));
+      const quat = new THREE.Quaternion().setFromUnitVectors(defaultUp, upDir);
+      this.group.quaternion.premultiply(quat);
     }
+  }
+
+  public setAlertState(alert: boolean): void {
+    this.isAlert = alert;
   }
 
   public setVisible(visible: boolean): void {
     this.group.visible = visible;
+  }
+
+  public update(dt: number, speed: number = 0, _isGrounded: boolean = true): void {
+    this.animTimer += dt * (3.0 + speed * 0.4);
+
+    // Floating breathing bob
+    const bob = Math.sin(this.animTimer * 2.2) * 0.08;
+    this.headWire.position.y = this.hoverHeight + bob;
+    this.coreMesh.position.y = this.hoverHeight + 0.22 + bob;
+    this.coreLight.position.y = this.hoverHeight + 0.22 + bob;
+    this.tentacleWire.position.y = this.hoverHeight + bob;
+
+    // Subtle core rotation
+    this.coreMesh.rotation.y += dt * 1.5;
+    this.coreMesh.rotation.x += dt * 0.8;
+
+    const baseRadius = 0.72;
+
+    // Procedural 3D tentacle waving & flaring
+    for (let t = 0; t < 8; t++) {
+      const ten = this.tentacles[t];
+      const phase = this.animTimer + t * 0.785; // 45 deg phase offset
+
+      const cosA = Math.cos(ten.baseAngle);
+      const sinA = Math.sin(ten.baseAngle);
+
+      // Joint 0: stays fixed to base rim
+      ten.segments[0].set(cosA * baseRadius, 0, sinA * baseRadius);
+
+      // Flare factor: expands out in alert or rapid movement (like enemy02_ba84c091.png)
+      const flare = (this.isAlert ? 1.45 : 1.0) * ten.flareMultiplier;
+
+      // Joint 1: upper joint curls down and out
+      const j1Wave = Math.sin(phase) * 0.15;
+      const r1 = baseRadius * (1.1 + (this.isAlert ? 0.3 : 0.05));
+      ten.segments[1].set(
+        cosA * r1 + sinA * j1Wave * 0.2,
+        -0.55 + Math.cos(phase * 0.8) * 0.08,
+        sinA * r1 - cosA * j1Wave * 0.2
+      );
+
+      // Joint 2: mid joint extends outward
+      const j2Wave = Math.sin(phase + 0.6) * 0.25;
+      const r2 = baseRadius * (1.4 * flare);
+      // In alert mode, side tentacles sweep high into the air as in enemy02_ba84c091.png!
+      const j2Height = (this.isAlert && (t === 2 || t === 6))
+        ? 0.15 + Math.sin(phase) * 0.15
+        : -1.25 + Math.sin(phase) * 0.12;
+
+      ten.segments[2].set(
+        cosA * r2 + sinA * j2Wave,
+        j2Height,
+        sinA * r2 - cosA * j2Wave
+      );
+
+      // Joint 3: tip trails in 3D with curl
+      const j3Wave = Math.sin(phase + 1.2) * 0.35;
+      const r3 = baseRadius * (1.85 * flare);
+      const j3Height = (this.isAlert && (t === 2 || t === 6))
+        ? 0.45 + Math.sin(phase + 0.4) * 0.25
+        : -1.95 + Math.cos(phase) * 0.18;
+
+      ten.segments[3].set(
+        cosA * r3 + sinA * j3Wave,
+        j3Height,
+        sinA * r3 - cosA * j3Wave
+      );
+    }
+
+    this.updateTentacleGeometry();
+  }
+
+  private updateTentacleGeometry(): void {
+    let ptr = 0;
+    for (let t = 0; t < 8; t++) {
+      const segs = this.tentacles[t].segments;
+      for (let s = 0; s < 3; s++) {
+        const p1 = segs[s];
+        const p2 = segs[s + 1];
+
+        this.tentaclePositions[ptr++] = p1.x;
+        this.tentaclePositions[ptr++] = p1.y;
+        this.tentaclePositions[ptr++] = p1.z;
+
+        this.tentaclePositions[ptr++] = p2.x;
+        this.tentaclePositions[ptr++] = p2.y;
+        this.tentaclePositions[ptr++] = p2.z;
+      }
+    }
+
+    const posAttr = this.tentacleGeom.getAttribute('position') as THREE.BufferAttribute;
+    posAttr.needsUpdate = true;
   }
 }
