@@ -94,7 +94,13 @@ export class PlayerController {
 
   public setSpawnPosition(pos: [number, number, number], yaw: number = 0, gravityInverted: boolean = false): void {
     this.setGravityInverted(gravityInverted);
-    const spawnY = gravityInverted ? pos[1] - this.height : pos[1] + this.height;
+    let spawnY: number;
+    if (gravityInverted) {
+      const ceilingY = pos[1] > 10 ? pos[1] : 20;
+      spawnY = ceilingY - this.height - 0.05;
+    } else {
+      spawnY = pos[1] + this.height + 0.05;
+    }
     this.position.set(pos[0], spawnY, pos[2]);
     this.velocity.set(0, 0, 0);
     this.yaw = yaw;
@@ -477,49 +483,151 @@ export class PlayerController {
       this.velocity.z = 0;
     }
 
-    // Movement Y with normal vs inverted gravity checks
-    const newY = this.position.y + this.velocity.y * dt;
+    // Movement Y with continuous swept floor / ceiling detection
+    const currentY = this.position.y;
+    const targetY = currentY + this.velocity.y * dt;
 
     if (this.gravityMultiplier > 0) {
-      // Normal gravity: floor below
-      const floorY = this.getHighestFloorUnder(this.position.x, newY, this.position.z, mazeData);
-      if (floorY !== null && newY - this.height <= floorY && this.velocity.y <= 0) {
-        this.position.y = floorY + this.height;
-        this.velocity.y = 0;
-        this.isGrounded = true;
-        this.coyoteTimer = 0.15;
-        this.canDoubleJump = true;
-        if (!wasGrounded) this.landSquash = 0.05;
-      } else {
-        const ceilingY = this.getLowestCeilingAbove(this.position.x, newY, this.position.z, mazeData);
-        if (ceilingY !== null && newY >= ceilingY && this.velocity.y > 0) {
-          this.position.y = ceilingY - 0.05;
+      // Normal Gravity: floor below
+      if (this.velocity.y <= 0) {
+        // Falling or standing: swept floor check
+        const currentFeet = currentY - this.height;
+        const targetFeet = targetY - this.height;
+        let landingFloorY: number | null = null;
+
+        for (const box of mazeData.colliders) {
+          if (
+            this.position.x >= box.minX - this.radius &&
+            this.position.x <= box.maxX + this.radius &&
+            this.position.z >= box.minZ - this.radius &&
+            this.position.z <= box.maxZ + this.radius
+          ) {
+            // Check if player feet were at or above the box top, and now passing through or on it
+            if (currentFeet >= box.maxY - 0.35 && targetFeet <= box.maxY + 0.08) {
+              if (landingFloorY === null || box.maxY > landingFloorY) {
+                landingFloorY = box.maxY;
+              }
+            }
+          }
+        }
+
+        // Also check active phase platforms
+        for (const plat of mazeData.phasePlatforms) {
+          if (!plat.active) continue;
+          const hw = plat.size[0] / 2;
+          const hd = plat.size[2] / 2;
+          const topY = plat.position[1];
+          if (
+            this.position.x >= plat.position[0] - hw - this.radius &&
+            this.position.x <= plat.position[0] + hw + this.radius &&
+            this.position.z >= plat.position[2] - hd - this.radius &&
+            this.position.z <= plat.position[2] + hd + this.radius
+          ) {
+            if (currentFeet >= topY - 0.35 && targetFeet <= topY + 0.08) {
+              if (landingFloorY === null || topY > landingFloorY) {
+                landingFloorY = topY;
+              }
+            }
+          }
+        }
+
+        if (landingFloorY !== null) {
+          this.position.y = landingFloorY + this.height;
           this.velocity.y = 0;
-        } else if (!this.checkCollisionAt(this.position.x, newY, this.position.z, mazeData)) {
-          this.position.y = newY;
+          this.isGrounded = true;
+          this.coyoteTimer = 0.15;
+          this.canDoubleJump = true;
+          if (!wasGrounded) this.landSquash = 0.05;
         } else {
+          this.position.y = targetY;
+        }
+      } else {
+        // Jumping up: check ceiling collision above head
+        const currentHead = currentY + this.height * 0.3;
+        const targetHead = targetY + this.height * 0.3;
+        let ceilingHitY: number | null = null;
+
+        for (const box of mazeData.colliders) {
+          if (
+            this.position.x >= box.minX - this.radius &&
+            this.position.x <= box.maxX + this.radius &&
+            this.position.z >= box.minZ - this.radius &&
+            this.position.z <= box.maxZ + this.radius
+          ) {
+            if (currentHead <= box.minY + 0.35 && targetHead >= box.minY - 0.08) {
+              if (ceilingHitY === null || box.minY < ceilingHitY) {
+                ceilingHitY = box.minY;
+              }
+            }
+          }
+        }
+
+        if (ceilingHitY !== null) {
+          this.position.y = ceilingHitY - this.height * 0.3 - 0.02;
           this.velocity.y = 0;
+        } else {
+          this.position.y = targetY;
         }
       }
     } else {
-      // Inverted gravity: ceiling above is the floor!
-      const ceilingY = this.getLowestCeilingAbove(this.position.x, newY, this.position.z, mazeData);
-      if (ceilingY !== null && newY + this.height >= ceilingY && this.velocity.y >= 0) {
-        this.position.y = ceilingY - this.height;
-        this.velocity.y = 0;
-        this.isGrounded = true;
-        this.coyoteTimer = 0.15;
-        this.canDoubleJump = true;
-        if (!wasGrounded) this.landSquash = 0.05;
-      } else {
-        const floorY = this.getHighestFloorUnder(this.position.x, newY, this.position.z, mazeData);
-        if (floorY !== null && newY <= floorY && this.velocity.y < 0) {
-          this.position.y = floorY + 0.05;
+      // Inverted Gravity: ceiling above is the walking floor!
+      if (this.velocity.y >= 0) {
+        // Moving upward towards ceiling: swept ceiling check
+        const currentHead = currentY + this.height;
+        const targetHead = targetY + this.height;
+        let landingCeilingY: number | null = null;
+
+        for (const box of mazeData.colliders) {
+          if (
+            this.position.x >= box.minX - this.radius &&
+            this.position.x <= box.maxX + this.radius &&
+            this.position.z >= box.minZ - this.radius &&
+            this.position.z <= box.maxZ + this.radius
+          ) {
+            if (currentHead <= box.minY + 0.35 && targetHead >= box.minY - 0.08) {
+              if (landingCeilingY === null || box.minY < landingCeilingY) {
+                landingCeilingY = box.minY;
+              }
+            }
+          }
+        }
+
+        if (landingCeilingY !== null) {
+          this.position.y = landingCeilingY - this.height;
           this.velocity.y = 0;
-        } else if (!this.checkCollisionAt(this.position.x, newY, this.position.z, mazeData)) {
-          this.position.y = newY;
+          this.isGrounded = true;
+          this.coyoteTimer = 0.15;
+          this.canDoubleJump = true;
+          if (!wasGrounded) this.landSquash = 0.05;
         } else {
+          this.position.y = targetY;
+        }
+      } else {
+        // Jumping downward away from ceiling: check floor collision below
+        const currentFeet = currentY - this.height * 0.3;
+        const targetFeet = targetY - this.height * 0.3;
+        let floorHitY: number | null = null;
+
+        for (const box of mazeData.colliders) {
+          if (
+            this.position.x >= box.minX - this.radius &&
+            this.position.x <= box.maxX + this.radius &&
+            this.position.z >= box.minZ - this.radius &&
+            this.position.z <= box.maxZ + this.radius
+          ) {
+            if (currentFeet >= box.maxY - 0.35 && targetFeet <= box.maxY + 0.08) {
+              if (floorHitY === null || box.maxY > floorHitY) {
+                floorHitY = box.maxY;
+              }
+            }
+          }
+        }
+
+        if (floorHitY !== null) {
+          this.position.y = floorHitY + this.height * 0.3 + 0.02;
           this.velocity.y = 0;
+        } else {
+          this.position.y = targetY;
         }
       }
     }
@@ -765,7 +873,8 @@ export class PlayerController {
   public checkCollisionAt(x: number, y: number, z: number, mazeData: MazeData): boolean {
     const minX = x - this.radius;
     const maxX = x + this.radius;
-    const minY = y - this.height;
+    // Step clearance: start 0.08m above feet so floor is not detected as a wall
+    const minY = y - this.height + 0.08;
     const maxY = y + this.height * 0.2;
     const minZ = z - this.radius;
     const maxZ = z + this.radius;
@@ -806,7 +915,7 @@ export class PlayerController {
     for (const box of mazeData.colliders) {
       if (x >= box.minX - this.radius && x <= box.maxX + this.radius &&
           z >= box.minZ - this.radius && z <= box.maxZ + this.radius) {
-        if (box.maxY <= feetY + 0.15 && (highest === null || box.maxY > highest)) {
+        if (box.maxY <= feetY + 0.35 && (highest === null || box.maxY > highest)) {
           highest = box.maxY;
         }
       }
@@ -822,7 +931,7 @@ export class PlayerController {
         x >= plat.position[0] - hw - this.radius && x <= plat.position[0] + hw + this.radius &&
         z >= plat.position[2] - hd - this.radius && z <= plat.position[2] + hd + this.radius
       ) {
-        if (topY <= feetY + 0.15 && (highest === null || topY > highest)) {
+        if (topY <= feetY + 0.35 && (highest === null || topY > highest)) {
           highest = topY;
         }
       }
@@ -836,7 +945,7 @@ export class PlayerController {
     for (const box of mazeData.colliders) {
       if (x >= box.minX - this.radius && x <= box.maxX + this.radius &&
           z >= box.minZ - this.radius && z <= box.maxZ + this.radius) {
-        if (box.minY >= y && (lowest === null || box.minY < lowest)) {
+        if (box.minY >= y - 0.35 && (lowest === null || box.minY < lowest)) {
           lowest = box.minY;
         }
       }

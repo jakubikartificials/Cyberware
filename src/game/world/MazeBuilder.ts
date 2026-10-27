@@ -455,14 +455,14 @@ export class MazeBuilder {
     };
 
     // =========================================================================
-    // LEVEL 01: THE PYRAMID VAULT (Z: 0 to -70) [NORMAL GRAVITY]
+    // LEVEL 01: THE PYRAMID VAULT (Z: +15 to -80) [NORMAL GRAVITY]
     // Matches screenshot level_5ebbece9.png: Stepped voxel mounds, tall pyramids,
     // and orthogonal maze corridors.
     // =========================================================================
-    addSlab(0, 0, -35, 36, 75, false);
-    addPerimeterBox(0, 0, -35, 36, 6, 75, 0.8, 'orange');
+    addSlab(0, 0, -32.5, 36, 95, false);
+    addPerimeterBox(0, 0, -32.5, 36, 6, 95, 0.8, 'orange');
 
-    // Level 1 Checkpoint (Start)
+    // Level 1 Checkpoint (Start - firmly positioned on solid floor)
     addCheckpoint('cp_level_1', 'LEVEL 01 // PYRAMID VAULT', 1, [0, 0, 5], 0x00f0ff, '#00f0ff');
 
     // Stepped voxel mounds in corners and sides matching level_5ebbece9.png
@@ -489,19 +489,23 @@ export class MazeBuilder {
     // Jump pad over ridge
     addJumpPad('pad_l1', [0, 0.15, -22], 18, 0x00f0ff);
 
+    // Jump pad in transition airlock to launch into ceiling inverted run
+    addJumpPad('pad_trans_1', [0, 0.15, -72], 22, 0xffaa00);
+
     // Transition Checkpoint to Level 2 (Upside Down!)
-    addCheckpoint('cp_level_2', 'LEVEL 02 // INVERTED STALACTITES', 2, [0, 0, -70], 0xffaa00, '#ffaa00');
+    addCheckpoint('cp_level_2', 'LEVEL 02 // INVERTED STALACTITES', 2, [0, 0, -75], 0xffaa00, '#ffaa00');
 
     // =========================================================================
-    // LEVEL 02: THE INVERTED STALACTITES (Z: -80 to -155) [UPSIDE DOWN!]
+    // LEVEL 02: THE INVERTED STALACTITES (Z: -70 to -170) [UPSIDE DOWN!]
     // Exactly matches screenshot level02_328e6d92.png:
     // Upper ceiling slab with perimeter rim, and hanging stepped voxel stalactites!
     // Gravity is inverted (pulls toward ceiling Y=20).
+    // Plus lower safety floor at Y=0 so player never falls through the world.
     // =========================================================================
     const ceilingY2 = 20;
-    addSlab(0, ceilingY2, -118, 38, 76, true);
-    // Perimeter box hanging downwards from ceiling
-    addPerimeterBox(0, ceilingY2 - 8, -118, 38, 8, 76, 0.8, 'orange');
+    addSlab(0, ceilingY2, -120, 38, 100, true);
+    addSlab(0, 0, -120, 38, 100, false); // Lower safety platform
+    addPerimeterBox(0, 10, -120, 38, 20, 100, 0.8, 'orange');
 
     // Hanging Stepped Voxel Stalactite Spires matching level02_328e6d92.png!
     addVoxelPyramid(-11, ceilingY2, -98, 5, 1.2, 1.3, true); // Stalactite Spire 1
@@ -532,15 +536,14 @@ export class MazeBuilder {
     addShiftingGate('gate_l2_shortcut', [0, ceilingY2 - 3, -128], [8, 6, 1.2], 6, 'up', 999999, 0, 0x00f0ff);
 
     // Checkpoint to Level 3 (Normal Gravity!)
-    addCheckpoint('cp_level_3', 'LEVEL 03 // SPIRE GAUNTLET', 3, [0, ceilingY2 - 1, -155], 0x00ff96, '#00ff96');
+    addCheckpoint('cp_level_3', 'LEVEL 03 // SPIRE GAUNTLET', 3, [0, 0, -165], 0x00ff96, '#00ff96');
 
     // =========================================================================
-    // LEVEL 03: THE SPIRE GAUNTLET (Z: -165 to -240) [NORMAL GRAVITY]
-    // High towering spires, rotating cog platforms over deep void chasm.
+    // LEVEL 03: THE SPIRE GAUNTLET (Z: -160 to -255) [NORMAL GRAVITY]
+    // Continuous floor at Y=0, high towering spires, rotating cog platforms over void chasm.
     // =========================================================================
-    addSlab(0, 0, -175, 28, 20, false);
-    addSlab(0, 0, -230, 28, 20, false);
-    addPerimeterBox(0, 0, -202, 34, 10, 76, 0.8, 'orange');
+    addSlab(0, 0, -207.5, 36, 95, false);
+    addPerimeterBox(0, 0, -207.5, 36, 10, 95, 0.8, 'orange');
 
     // High Voxel Spires on both flanks
     addVoxelPyramid(-10, 0, -185, 6, 1.5, 1.2, false); // 9m high spire
@@ -548,7 +551,7 @@ export class MazeBuilder {
     addVoxelPyramid(-10, 0, -220, 5, 1.4, 1.2, false);
     addVoxelPyramid(10, 0, -220, 5, 1.4, 1.2, false);
 
-    // Deep Chasm from Z: -185 to -220 spanned by Rotating Platforms & Climbing Ropes!
+    // Spanned by Rotating Platforms & Climbing Ropes!
     addRotatingPlatform('rot_l3_1', [0, 1.5, -192], 4.2, 0.9, 0x00ff96);
     addRotatingPlatform('rot_l3_2', [0, 2.5, -212], 4.5, -0.85, 0x00ff96);
 
@@ -559,17 +562,21 @@ export class MazeBuilder {
     addChronocube('cube_l3_1', [0, 7.5, -202], 0x00ff96);
     addChronocube('cube_l3_2', [10, 9.5, -195], 0x00ff96);
 
+    // Transition jump pad to ceiling
+    addJumpPad('pad_trans_3', [0, 0.15, -248], 23, 0xff007f);
+
     // Checkpoint to Level 4 (Upside Down!)
-    addCheckpoint('cp_level_4', 'LEVEL 04 // INVERTED CHASM', 4, [0, 0, -240], 0xff007f, '#ff007f');
+    addCheckpoint('cp_level_4', 'LEVEL 04 // INVERTED CHASM', 4, [0, 0, -250], 0xff007f, '#ff007f');
 
     // =========================================================================
-    // LEVEL 04: THE INVERTED CHASM (Z: -250 to -325) [UPSIDE DOWN!]
-    // Massive inverted cavern with hanging stalactite clusters and hanging gates.
-    // Ceiling Y = 22.
+    // LEVEL 04: THE INVERTED CHASM (Z: -245 to -345) [UPSIDE DOWN!]
+    // Continuous ceiling slab at Y=22, hanging stalactite clusters and hanging gates.
+    // Plus lower safety floor at Y=0 so player never falls through the world.
     // =========================================================================
     const ceilingY4 = 22;
-    addSlab(0, ceilingY4, -288, 38, 76, true);
-    addPerimeterBox(0, ceilingY4 - 9, -288, 38, 9, 76, 0.8, 'orange');
+    addSlab(0, ceilingY4, -295, 38, 100, true);
+    addSlab(0, 0, -295, 38, 100, false); // Lower safety platform
+    addPerimeterBox(0, 11, -295, 38, 22, 100, 0.8, 'orange');
 
     // Massive Inverted Stalactite Groups
     addVoxelPyramid(-9, ceilingY4, -265, 6, 1.3, 1.2, true);
@@ -591,14 +598,14 @@ export class MazeBuilder {
     addChronocube('cube_l4_2', [-9, ceilingY4 - 7.5, -265], 0xff007f);
 
     // Checkpoint to Level 5 (Normal Gravity!)
-    addCheckpoint('cp_level_5', 'LEVEL 05 // ASCENT MONOLITH', 5, [0, ceilingY4 - 1, -325], 0xffaa00, '#ffaa00');
+    addCheckpoint('cp_level_5', 'LEVEL 05 // ASCENT MONOLITH', 5, [0, 0, -340], 0xffaa00, '#ffaa00');
 
     // =========================================================================
-    // LEVEL 05: THE ASCENT MONOLITH (Z: -335 to -410) [NORMAL GRAVITY]
-    // Grand ascending stepped voxel mountain labyrinth leading to the peak.
+    // LEVEL 05: THE ASCENT MONOLITH (Z: -335 to -430) [NORMAL GRAVITY]
+    // Grand ascending stepped voxel mountain labyrinth with solid continuous floor.
     // =========================================================================
-    addSlab(0, 0, -372, 38, 76, false);
-    addPerimeterBox(0, 0, -372, 38, 12, 76, 0.8, 'orange');
+    addSlab(0, 0, -382.5, 38, 95, false);
+    addPerimeterBox(0, 0, -382.5, 38, 12, 95, 0.8, 'orange');
 
     // Colossal Multi-tiered Voxel Mountain in Center
     addVoxelPyramid(0, 0, -375, 8, 1.2, 1.4, false); // 10m towering pyramid!
@@ -615,21 +622,25 @@ export class MazeBuilder {
     // Super Jump Pad to scale the summit
     addJumpPad('pad_l5_summit', [0, 0.15, -355], 24, 0xffaa00);
 
+    // Jump pad in transition airlock to launch into ceiling
+    addJumpPad('pad_trans_5', [0, 0.15, -422], 24, 0x00f0ff);
+
     // Chronocube on apex of the central pyramid
     addChronocube('cube_l5_1', [0, 10.2, -375], 0xffaa00);
     addChronocube('cube_l5_2', [11, 7.5, -395], 0xffaa00);
 
     // Checkpoint to Level 6 (Final Inverted Extraction!)
-    addCheckpoint('cp_level_6', 'LEVEL 06 // INVERTED CORE APEX', 6, [0, 0, -410], 0x00f0ff, '#00f0ff');
+    addCheckpoint('cp_level_6', 'LEVEL 06 // INVERTED CORE APEX', 6, [0, 0, -425], 0x00f0ff, '#00f0ff');
 
     // =========================================================================
-    // LEVEL 06: THE INVERTED CORE APEX (Z: -420 to -500) [UPSIDE DOWN!]
-    // Grand Finale: The extraction core suspended from the cavern ceiling.
-    // Ceiling Y = 24.
+    // LEVEL 06: THE INVERTED CORE APEX (Z: -420 to -520) [UPSIDE DOWN!]
+    // Grand Finale: Continuous ceiling slab at Y=24 with suspended Extraction Core.
+    // Plus lower safety floor at Y=0 so player never falls through the world.
     // =========================================================================
     const ceilingY6 = 24;
-    addSlab(0, ceilingY6, -460, 42, 82, true);
-    addPerimeterBox(0, ceilingY6 - 12, -460, 42, 12, 82, 0.8, 'orange');
+    addSlab(0, ceilingY6, -470, 42, 100, true);
+    addSlab(0, 0, -470, 42, 100, false); // Lower safety platform
+    addPerimeterBox(0, 12, -470, 42, 24, 100, 0.8, 'orange');
 
     // Grand inverted stalactites flanking the final approach
     addVoxelPyramid(-12, ceilingY6, -435, 7, 1.3, 1.3, true);
