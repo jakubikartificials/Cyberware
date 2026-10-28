@@ -82,6 +82,7 @@ export class PlayerController {
   public onDamageTaken?: (amount: number) => void;
   public onBeatComboChanged?: (combo: number) => void;
   public onCheckProjectileHit?: (pos: THREE.Vector3) => boolean;
+  public onGravityFlipped?: (sector: number, isUpsideDown: boolean) => void;
 
   constructor(camera: THREE.PerspectiveCamera) {
     this.camera = camera;
@@ -110,8 +111,13 @@ export class PlayerController {
   }
 
   public setGravityInverted(inverted: boolean): void {
+    const wasInverted = this.gravityMultiplier < 0;
     this.gravityMultiplier = inverted ? -1.0 : 1.0;
     this.cameraRoll = inverted ? Math.PI : 0;
+    if (wasInverted !== inverted) {
+      soundSynth.playGravityFlip();
+      this.cameraShakeIntensity = Math.max(this.cameraShakeIntensity, 0.32);
+    }
   }
 
   public handleMouseMove(movementX: number, movementY: number, settings: GameSettings): void {
@@ -206,17 +212,21 @@ export class PlayerController {
   }
 
   /**
-   * Handle Climbing Rope / Grappling Tether (Right Mouse Click):
-   * - 1st click: Fires climbing rope tether towards crosshair, anchors to wall/spire/ceiling
-   * - 2nd click: Pulls the rope, rapidly hauling player toward anchor point to climb
+   * Handle Climbing Rope / Grappling Tether (Right Mouse Button):
+   * - Fires climbing rope towards crosshair AND begins pulling player immediately!
+   * - If already attached, pulls rope with reel climb velocity boost
    */
   public handleRightClickRope(scene: THREE.Scene, mazeData: MazeData): void {
     if (!this.isRopeAttached) {
-      // 1. Fire rope
-      this.fireRope(scene, mazeData);
+      // 1. Fire rope and immediately start hauling player towards anchor
+      const hit = this.fireRope(scene, mazeData);
+      if (hit) {
+        this.pullRope();
+      }
     } else {
-      // 2. Second click: Pull rope to climb!
+      // 2. Already attached: pull rope to climb rapidly with reel boost!
       this.pullRope();
+      this.velocity.multiplyScalar(1.2);
     }
   }
 
@@ -323,7 +333,7 @@ export class PlayerController {
 
   public update(
     dt: number,
-    heldInputs: { forward: boolean; backward: boolean; left: boolean; right: boolean; analogX?: number; analogZ?: number },
+    heldInputs: { forward: boolean; backward: boolean; left: boolean; right: boolean; pullRope?: boolean; analogX?: number; analogZ?: number },
     mazeData: MazeData,
     settings: GameSettings,
     stats: PlayerStats,
@@ -368,10 +378,14 @@ export class PlayerController {
     const isMoving = this._moveDir.lengthSq() > 0.001;
     if (isMoving) this._moveDir.normalize();
 
-    // 4. Climbing Rope Reel / Pull Physics
+    // 4. Climbing Rope Reel / Pull Physics (RMB fire/pull)
     if (this.isRopeAttached) {
       const toAnchor = this.ropeAnchor.clone().sub(this.position);
       const ropeDist = toAnchor.length();
+
+      if (heldInputs.pullRope) {
+        this.isPullingRope = true;
+      }
 
       if (this.isPullingRope) {
         // Reeling toward anchor
@@ -639,6 +653,37 @@ export class PlayerController {
       this.respawnAtLastCheckpoint(mazeData, stats);
     }
 
+    // 9.5 Dynamic Level Gravity: When jumping/moving into upside-down levels, flip gravity!
+    const curZ = this.position.z;
+    let sectorIn = 1;
+    let isUpsideDown = false;
+
+    if (curZ > -71) {
+      sectorIn = 1;
+      isUpsideDown = false;
+    } else if (curZ > -165) {
+      sectorIn = 2;
+      isUpsideDown = true;
+    } else if (curZ > -248) {
+      sectorIn = 3;
+      isUpsideDown = false;
+    } else if (curZ > -338) {
+      sectorIn = 4;
+      isUpsideDown = true;
+    } else if (curZ > -422) {
+      sectorIn = 5;
+      isUpsideDown = false;
+    } else {
+      sectorIn = 6;
+      isUpsideDown = true;
+    }
+
+    if ((this.gravityMultiplier < 0) !== isUpsideDown) {
+      this.setGravityInverted(isUpsideDown);
+      stats.currentSector = sectorIn;
+      this.onGravityFlipped?.(sectorIn, isUpsideDown);
+    }
+
     // 10. Check Jump Pads
     for (const pad of mazeData.jumpPads) {
       const dx = this.position.x - pad.position[0];
@@ -647,6 +692,13 @@ export class PlayerController {
       const distXZ = Math.sqrt(dx * dx + dz * dz);
 
       if (distXZ <= pad.size[0] / 2 + this.radius * 0.5 && Math.abs(dy) <= 1.2) {
+        if (pad.id.startsWith('pad_trans_')) {
+          // Launching into upside-down level via airlock pad!
+          this.setGravityInverted(true);
+          const activeSec = pad.id === 'pad_trans_1' ? 2 : pad.id === 'pad_trans_3' ? 4 : 6;
+          stats.currentSector = activeSec;
+          this.onGravityFlipped?.(activeSec, true);
+        }
         this.velocity.y = this.gravityMultiplier * pad.power;
         this.isGrounded = false;
         soundSynth.playJumpPad();

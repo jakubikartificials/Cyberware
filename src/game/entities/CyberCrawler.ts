@@ -197,71 +197,128 @@ export class CyberCrawler {
     this.group.visible = visible;
   }
 
-  public update(dt: number, speed: number = 0, _isGrounded: boolean = true): void {
-    this.animTimer += dt * (3.0 + speed * 0.4);
+  public update(dt: number, speed: number = 0, isGrounded: boolean = true): void {
+    const isMoving = speed > 0.1;
+    const walkRate = isMoving ? 5.2 + Math.min(speed, 12) * 0.65 : 2.0;
+    this.animTimer += dt * walkRate;
 
-    // Floating breathing bob
-    const bob = Math.sin(this.animTimer * 2.2) * 0.08;
-    this.headWire.position.y = this.hoverHeight + bob;
-    this.coreMesh.position.y = this.hoverHeight + 0.22 + bob;
-    this.coreLight.position.y = this.hoverHeight + 0.22 + bob;
-    this.tentacleWire.position.y = this.hoverHeight + bob;
+    // Body walking bob and stride sway
+    const bodyBob = isMoving ? Math.sin(this.animTimer * 2) * 0.06 : Math.sin(this.animTimer) * 0.03;
+    const currentY = this.hoverHeight + bodyBob;
+    this.headWire.position.y = currentY;
+    this.coreMesh.position.y = currentY + 0.22;
+    this.coreLight.position.y = currentY + 0.22;
+    this.tentacleWire.position.y = currentY;
 
     // Subtle core rotation
     this.coreMesh.rotation.y += dt * 1.5;
     this.coreMesh.rotation.x += dt * 0.8;
 
     const baseRadius = 0.72;
+    const groundY = -this.hoverHeight; // Foot level on the walking surface
 
-    // Procedural 3D tentacle waving & flaring
+    // Procedural multi-jointed spider leg stepping animation
     for (let t = 0; t < 8; t++) {
       const ten = this.tentacles[t];
-      const phase = this.animTimer + t * 0.785; // 45 deg phase offset
-
       const cosA = Math.cos(ten.baseAngle);
       const sinA = Math.sin(ten.baseAngle);
 
-      // Joint 0: stays fixed to base rim
+      // Joint 0: Rim hip anchor
       ten.segments[0].set(cosA * baseRadius, 0, sinA * baseRadius);
 
-      // Flare factor: expands out in alert or rapid movement (like enemy02_ba84c091.png)
-      const flare = (this.isAlert ? 1.45 : 1.0) * ten.flareMultiplier;
+      // Check if side threat display leg in alert mode (matches enemy02_ba84c091.png)
+      if (this.isAlert && (t === 2 || t === 6)) {
+        const flarePhase = this.animTimer * 1.5 + t;
+        ten.segments[1].set(
+          cosA * baseRadius * 1.35,
+          0.45 + Math.sin(flarePhase) * 0.12,
+          sinA * baseRadius * 1.35
+        );
+        ten.segments[2].set(
+          cosA * baseRadius * 1.9,
+          0.95 + Math.sin(flarePhase + 0.4) * 0.18,
+          sinA * baseRadius * 1.9
+        );
+        ten.segments[3].set(
+          cosA * baseRadius * 2.5 * ten.flareMultiplier,
+          1.35 + Math.sin(flarePhase + 0.8) * 0.22,
+          sinA * baseRadius * 2.5 * ten.flareMultiplier
+        );
+        continue;
+      }
 
-      // Joint 1: upper joint curls down and out
-      const j1Wave = Math.sin(phase) * 0.15;
-      const r1 = baseRadius * (1.1 + (this.isAlert ? 0.3 : 0.05));
-      ten.segments[1].set(
-        cosA * r1 + sinA * j1Wave * 0.2,
-        -0.55 + Math.cos(phase * 0.8) * 0.08,
-        sinA * r1 - cosA * j1Wave * 0.2
-      );
+      if (isMoving && isGrounded) {
+        // Alternating tetrapod stepping gait (legs 0,2,4,6 vs 1,3,5,7)
+        const gaitPhase = this.animTimer + (t % 2 === 0 ? 0 : Math.PI) + (t / 8) * 0.4;
+        const stepCycle = Math.sin(gaitPhase);
 
-      // Joint 2: mid joint extends outward
-      const j2Wave = Math.sin(phase + 0.6) * 0.25;
-      const r2 = baseRadius * (1.4 * flare);
-      // In alert mode, side tentacles sweep high into the air as in enemy02_ba84c091.png!
-      const j2Height = (this.isAlert && (t === 2 || t === 6))
-        ? 0.15 + Math.sin(phase) * 0.15
-        : -1.25 + Math.sin(phase) * 0.12;
+        let footLift = 0;
+        let kneeLift = 0;
+        let strideOffset = 0;
 
-      ten.segments[2].set(
-        cosA * r2 + sinA * j2Wave,
-        j2Height,
-        sinA * r2 - cosA * j2Wave
-      );
+        if (stepCycle > 0) {
+          // SWING PHASE: Leg lifts into air, high knee arches up, foot steps forward
+          footLift = Math.sin(stepCycle * Math.PI) * 0.42;
+          kneeLift = Math.sin(stepCycle * Math.PI) * 0.28;
+          strideOffset = -(stepCycle - 0.5) * 0.45; // Move forward in direction of motion
+        } else {
+          // STANCE PHASE: Foot is firmly planted on the ground, pushing body forward
+          footLift = 0;
+          kneeLift = 0;
+          strideOffset = (-stepCycle - 0.5) * 0.45; // Move backward relative to body
+        }
 
-      // Joint 3: tip trails in 3D with curl
-      const j3Wave = Math.sin(phase + 1.2) * 0.35;
-      const r3 = baseRadius * (1.85 * flare);
-      const j3Height = (this.isAlert && (t === 2 || t === 6))
-        ? 0.45 + Math.sin(phase + 0.4) * 0.25
-        : -1.95 + Math.cos(phase) * 0.18;
+        // Joint 1: High spider arch knee (coxa/trochanter)
+        const r1 = baseRadius * 1.32;
+        ten.segments[1].set(
+          cosA * r1,
+          0.24 + kneeLift,
+          sinA * r1
+        );
 
-      ten.segments[3].set(
-        cosA * r3 + sinA * j3Wave,
-        j3Height,
-        sinA * r3 - cosA * j3Wave
-      );
+        // Joint 2: Tibia knee/elbow angling downward
+        const r2 = baseRadius * 1.82;
+        ten.segments[2].set(
+          cosA * r2,
+          -0.42 + kneeLift * 0.5,
+          sinA * r2
+        );
+
+        // Joint 3: Foot claw tip planted on walking floor / ceiling
+        const r3 = baseRadius * 2.35 * (this.isAlert ? 1.25 : 1.0);
+        ten.segments[3].set(
+          cosA * r3,
+          groundY + footLift,
+          sinA * r3 + strideOffset
+        );
+      } else {
+        // IDLE STANCE: All 8 feet firmly planted on ground with subtle cybernetic breathing
+        const breathe = Math.sin(this.animTimer * 2.0 + t * 0.785) * 0.035;
+
+        // Joint 1: Arched spider knee
+        const r1 = baseRadius * 1.32;
+        ten.segments[1].set(
+          cosA * r1,
+          0.22 + breathe,
+          sinA * r1
+        );
+
+        // Joint 2: Angled tibia
+        const r2 = baseRadius * 1.82;
+        ten.segments[2].set(
+          cosA * r2,
+          -0.42 + breathe * 0.5,
+          sinA * r2
+        );
+
+        // Joint 3: Foot tip resting on floor
+        const r3 = baseRadius * 2.35;
+        ten.segments[3].set(
+          cosA * r3,
+          groundY,
+          sinA * r3
+        );
+      }
     }
 
     this.updateTentacleGeometry();

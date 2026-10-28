@@ -258,18 +258,58 @@ export class MazeBuilder {
       const cpGroup = new THREE.Group();
       cpGroup.position.set(pos[0], pos[1], pos[2]);
 
-      const ringGeom = new THREE.TorusGeometry(2.4, 0.08, 6, 24);
-      const ringMat = new THREE.MeshBasicMaterial({ color: colorHex, wireframe: true });
-      const ringMesh1 = new THREE.Mesh(ringGeom, ringMat);
-      ringMesh1.position.y = 2.4;
-      cpGroup.add(ringMesh1);
+      // Concentric pure lined circles and radial spokes portal (NO TORUS!)
+      const portalRings = new THREE.Group();
+      portalRings.position.y = 2.4;
 
-      const ringMesh2 = new THREE.Mesh(ringGeom, ringMat);
-      ringMesh2.position.y = 2.4;
-      ringMesh2.rotation.y = Math.PI / 2;
-      cpGroup.add(ringMesh2);
+      const circleMat = new THREE.LineBasicMaterial({
+        color: colorHex,
+        linewidth: 2,
+      });
 
-      const pillarGeom = new THREE.CylinderGeometry(0.3, 0.8, 12, 12, 1, true);
+      // Helper to generate lined circle BufferGeometry
+      const makeCircleGeom = (radius: number, segments: number = 48) => {
+        const pts: THREE.Vector3[] = [];
+        for (let i = 0; i <= segments; i++) {
+          const theta = (i / segments) * Math.PI * 2;
+          pts.push(new THREE.Vector3(Math.cos(theta) * radius, Math.sin(theta) * radius, 0));
+        }
+        return new THREE.BufferGeometry().setFromPoints(pts);
+      };
+
+      // 1. Concentric lined circles facing corridor (Z axis)
+      const r1 = new THREE.Line(makeCircleGeom(2.8), circleMat);
+      const r2 = new THREE.Line(makeCircleGeom(2.1), circleMat);
+      const r3 = new THREE.Line(makeCircleGeom(1.4), circleMat);
+      const r4 = new THREE.Line(makeCircleGeom(0.7), circleMat);
+      portalRings.add(r1, r2, r3, r4);
+
+      // 2. Radial line spokes connecting the concentric circles
+      const spokePts: THREE.Vector3[] = [];
+      for (let i = 0; i < 8; i++) {
+        const angle = (i * Math.PI * 2) / 8;
+        const cosA = Math.cos(angle);
+        const sinA = Math.sin(angle);
+        spokePts.push(
+          new THREE.Vector3(cosA * 0.7, sinA * 0.7, 0),
+          new THREE.Vector3(cosA * 2.8, sinA * 2.8, 0)
+        );
+      }
+      const spokeGeom = new THREE.BufferGeometry().setFromPoints(spokePts);
+      const spokeMesh = new THREE.LineSegments(spokeGeom, circleMat);
+      portalRings.add(spokeMesh);
+
+      // 3. Perpendicular concentric lined circles
+      const perpGroup = new THREE.Group();
+      const pr1 = new THREE.Line(makeCircleGeom(2.8), circleMat);
+      const pr2 = new THREE.Line(makeCircleGeom(1.75), circleMat);
+      perpGroup.add(pr1, pr2);
+      perpGroup.rotation.y = Math.PI / 2;
+      portalRings.add(perpGroup);
+
+      cpGroup.add(portalRings);
+
+      const pillarGeom = new THREE.CylinderGeometry(0.3, 0.8, 12, 12, 2, true);
       const pillarMat = new THREE.MeshBasicMaterial({
         color: colorHex,
         transparent: true,

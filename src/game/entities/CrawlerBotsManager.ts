@@ -172,6 +172,21 @@ export class CrawlerBotsManager {
     }
   }
 
+  public setSectorGravity(sector: number, isUpsideDown: boolean): void {
+    for (const bot of this.hazardCrawlers) {
+      const z = bot.position.z;
+      const botSector = 
+        z > -71 ? 1 :
+        z > -165 ? 2 :
+        z > -248 ? 3 :
+        z > -338 ? 4 :
+        z > -422 ? 5 : 6;
+      if (botSector === sector) {
+        bot.isInvertedLevel = isUpsideDown;
+      }
+    }
+  }
+
   public update(
     dt: number,
     playerPos: THREE.Vector3,
@@ -206,7 +221,9 @@ export class CrawlerBotsManager {
           runner.position.addScaledVector(moveDir, runner.speed * dt);
           runner.position.y = THREE.MathUtils.damp(runner.position.y, target.y, 6, dt);
 
-          const isEvenLevel = target.y > 10;
+          // Dynamic gravity for competitor runners
+          const rz = runner.position.z;
+          const isEvenLevel = target.y > 10 || (rz <= -71 && rz > -165) || (rz <= -248 && rz > -338) || (rz <= -422);
           const upDir = isEvenLevel ? new THREE.Vector3(0, -1, 0) : new THREE.Vector3(0, 1, 0);
           runner.crawler.setPositionAndRotation(runner.position, runner.yaw, upDir);
           runner.crawler.update(dt, runner.speed, true);
@@ -226,11 +243,33 @@ export class CrawlerBotsManager {
 
       if (bot.chitterCooldown > 0) bot.chitterCooldown -= dt;
 
+      // Dynamic gravity detection based on current level position
+      const botZ = bot.position.z;
+      const isUpsideDownLevel = 
+        (botZ <= -71 && botZ > -165) || // Level 2: Inverted Stalactites (Ceiling Y=20)
+        (botZ <= -248 && botZ > -338) || // Level 4: Inverted Chasm (Ceiling Y=22)
+        (botZ <= -422); // Level 6: Inverted Core Apex (Ceiling Y=24)
+
+      bot.isInvertedLevel = isUpsideDownLevel;
+
+      // Adjust height to attach and walk on ceiling if inverted, or floor if normal
+      let targetWalkY = 0.85;
+      if (bot.isInvertedLevel) {
+        if (botZ <= -422) {
+          targetWalkY = 24 - 0.85; // Level 6
+        } else if (botZ <= -248) {
+          targetWalkY = 22 - 0.85; // Level 4
+        } else {
+          targetWalkY = 20 - 0.85; // Level 2
+        }
+      }
+      bot.position.y = THREE.MathUtils.damp(bot.position.y, targetWalkY, 8, dt);
+
       const distToPlayer = bot.position.distanceTo(playerPos);
       const upDir = bot.isInvertedLevel ? new THREE.Vector3(0, -1, 0) : new THREE.Vector3(0, 1, 0);
 
-      if (distToPlayer <= 18 && Math.abs(bot.position.y - playerPos.y) < 7) {
-        // Player detected: Flare tentacles and engage chase mode! (matches enemy02_ba84c091.png)
+      if (distToPlayer <= 20 && Math.abs(bot.position.y - playerPos.y) < 10) {
+        // Player detected: Flare threat display and engage chase! (matches enemy02_ba84c091.png)
         bot.isChasing = true;
         bot.crawler.setAlertState(true);
 
@@ -245,7 +284,7 @@ export class CrawlerBotsManager {
         }
 
         const moveDir = new THREE.Vector3(-Math.sin(bot.yaw), 0, -Math.cos(bot.yaw)).normalize();
-        const chaseSpeed = 5.8;
+        const chaseSpeed = 6.2;
         bot.position.addScaledVector(moveDir, chaseSpeed * dt);
 
         bot.crawler.setPositionAndRotation(bot.position, bot.yaw, upDir);
@@ -259,7 +298,7 @@ export class CrawlerBotsManager {
           bot.stunnedTimer = 0.8;
         }
       } else {
-        // Normal patrol (tentacles undulating gently)
+        // Normal patrol: walking on legs along floor/ceiling
         bot.isChasing = false;
         bot.crawler.setAlertState(false);
 
@@ -267,14 +306,14 @@ export class CrawlerBotsManager {
         const dz = bot.patrolTarget.z - bot.position.z;
         const distToPatrol = Math.sqrt(dx * dx + dz * dz);
 
-        if (distToPatrol < 1.2) {
+        if (distToPatrol < 1.4) {
           bot.patrolTarget = bot.patrolTarget === bot.patrolStart ? bot.patrolEnd : bot.patrolStart;
         } else {
           const targetYaw = Math.atan2(-dx, -dz);
           bot.yaw = THREE.MathUtils.damp(bot.yaw, targetYaw, 5, dt);
 
           const moveDir = new THREE.Vector3(-Math.sin(bot.yaw), 0, -Math.cos(bot.yaw)).normalize();
-          const patrolSpeed = 3.2;
+          const patrolSpeed = 3.4;
           bot.position.addScaledVector(moveDir, patrolSpeed * dt);
 
           bot.crawler.setPositionAndRotation(bot.position, bot.yaw, upDir);

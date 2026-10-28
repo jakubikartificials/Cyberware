@@ -44,6 +44,8 @@ export class WireScene {
     analogZ: 0,
   };
 
+  public isRightMouseDown: boolean = false;
+
   // State refs
   public gameState: GameState = 'title';
   public settings: GameSettings;
@@ -169,6 +171,13 @@ export class WireScene {
       this.onStatsUpdate?.({ ...this.stats });
     };
 
+    this.player.onGravityFlipped = (sector, isUpsideDown) => {
+      this.stats.currentSector = sector;
+      this.stats.isGravityInverted = isUpsideDown;
+      this.crawlerBotsManager?.setSectorGravity(sector, isUpsideDown);
+      this.onStatsUpdate?.({ ...this.stats });
+    };
+
     this.player.onVictoryReached = () => {
       this.gameState = 'victory';
       this.onStateTransition?.('victory');
@@ -250,15 +259,42 @@ export class WireScene {
     window.addEventListener('keydown', this.onKeyDown);
     window.addEventListener('keyup', this.onKeyUp);
     window.addEventListener('blur', this.onBlur);
+    this.renderer.domElement.addEventListener('mousedown', this.onMouseDown);
+    window.addEventListener('mouseup', this.onMouseUp);
     this.renderer.domElement.addEventListener('contextmenu', this.onContextMenu);
   }
 
-  private onContextMenu = (e: MouseEvent): void => {
-    e.preventDefault();
-    if (this.gameState === 'playing') {
-      // Right click: fires rope to climb, second right-click pulls rope!
+  private onMouseDown = (e: MouseEvent): void => {
+    soundSynth.resumeContext();
+    if (this.gameState === 'title') {
+      this.startGame();
+      return;
+    }
+    if (this.gameState !== 'playing') return;
+
+    if (document.pointerLockElement !== this.renderer.domElement) {
+      this.requestPointerLock();
+      return;
+    }
+
+    if (e.button === 0) {
+      // Left click: Fire pulse blaster
+      this.firePulse();
+    } else if (e.button === 2) {
+      // Right click: Fire / Pull rope!
+      this.isRightMouseDown = true;
       this.handleRope();
     }
+  };
+
+  private onMouseUp = (e: MouseEvent): void => {
+    if (e.button === 2) {
+      this.isRightMouseDown = false;
+    }
+  };
+
+  private onContextMenu = (e: MouseEvent): void => {
+    e.preventDefault();
   };
 
   private onResize = (): void => {
@@ -500,6 +536,7 @@ export class WireScene {
         dt,
         {
           ...this.heldKeys,
+          pullRope: this.isRightMouseDown,
           analogX: this.touchInputs.analogX,
           analogZ: this.touchInputs.analogZ,
         },
@@ -558,6 +595,13 @@ export class WireScene {
       }
 
       this.onStatsUpdate?.({ ...this.stats });
+    }
+
+    // 1.5. Animate Geometric Lined Circle Portals
+    for (const [_, cpMesh] of this.mazeData.animatedMeshes.checkpointMeshes) {
+      if (cpMesh.rings) {
+        cpMesh.rings.rotation.z += dt * 0.75;
+      }
     }
 
     // 2. Animate Rotating Platforms
