@@ -39,8 +39,9 @@ export class CyberCrawler {
     this.isPlayer = isPlayer;
     this.group = new THREE.Group();
 
-    // 4x smaller scale for player/crawler as requested
-    this.group.scale.set(0.3, 0.3, 0.3);
+    // 4x bigger player (scale 1.2), while bot crawlers stay compact (scale 0.3)
+    const s = this.isPlayer ? 1.2 : 0.3;
+    this.group.scale.set(s, s, s);
 
     // =========================================================================
     // 1. Build Faceted Geodesic Dome Head matching Blender viewport screenshots

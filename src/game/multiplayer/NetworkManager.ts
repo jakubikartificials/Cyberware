@@ -102,7 +102,7 @@ export class NetworkManager {
     if (this.remoteCrawler) {
       this.scene.remove(this.remoteCrawler.group);
     }
-    this.remoteCrawler = new CyberCrawler(colorHex, false);
+    this.remoteCrawler = new CyberCrawler(colorHex, true);
     this.remoteCrawler.setVisible(false);
     this.scene.add(this.remoteCrawler.group);
   }

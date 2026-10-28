@@ -14,7 +14,7 @@ export interface PulseProjectile {
 
 export class PlayerController {
   public camera: THREE.PerspectiveCamera;
-  public position: THREE.Vector3 = new THREE.Vector3(0, 0.5, 5);
+  public position: THREE.Vector3 = new THREE.Vector3(0, 1.75, 5);
   public velocity: THREE.Vector3 = new THREE.Vector3();
 
   // Character Cyber Sentinel Avatar (visible to other players/reflections, hidden in cockpit)
@@ -32,14 +32,14 @@ export class PlayerController {
   public cameraRoll: number = 0; // target roll: 0 for normal, Math.PI for upside down
   public currentRoll: number = 0;
 
-  // 4x Smaller Player Dimensions
-  public height: number = 0.42;
-  public radius: number = 0.12;
+  // Player Dimensions (4x bigger)
+  public height: number = 1.68;
+  public radius: number = 0.48;
 
   // Physics parameters
-  private moveSpeed: number = 8.5;
+  private moveSpeed: number = 10.5;
   private gravity: number = 22.0;
-  private jumpImpulse: number = 7.5;
+  private jumpImpulse: number = 11.5;
 
   // State flags
   public isGrounded: boolean = false;
@@ -182,10 +182,10 @@ export class PlayerController {
     const dir = new THREE.Vector3();
     this.camera.getWorldDirection(dir);
 
-    const startPos = this.camera.position.clone().addScaledVector(dir, 0.25);
+    const startPos = this.camera.position.clone().addScaledVector(dir, 0.6);
 
-    // Vibrant wireframe diamond projectile
-    const geom = new THREE.OctahedronGeometry(0.08, 0);
+    // Vibrant wireframe diamond projectile (scaled for full-size player)
+    const geom = new THREE.OctahedronGeometry(0.2, 0);
     const edges = new THREE.EdgesGeometry(geom);
     const line = new THREE.LineSegments(
       edges,
@@ -260,7 +260,7 @@ export class PlayerController {
     if (this.ropeAnchorMesh && this.ropeAnchorMesh.parent) {
       this.ropeAnchorMesh.parent.remove(this.ropeAnchorMesh);
     }
-    const anchorGeom = new THREE.RingGeometry(0.12, 0.24, 8);
+    const anchorGeom = new THREE.RingGeometry(0.25, 0.5, 8);
     const anchorMat = new THREE.MeshBasicMaterial({
       color: 0xffaa00,
       wireframe: true,
@@ -308,8 +308,8 @@ export class PlayerController {
     if (boost) {
       // Boost upward & forward to mantle onto ledge
       const fwd = new THREE.Vector3(-Math.sin(this.yaw), 0, -Math.cos(this.yaw));
-      this.velocity.addScaledVector(fwd, 4.0);
-      this.velocity.y += (this.gravityMultiplier > 0 ? 1 : -1) * 6.5;
+      this.velocity.addScaledVector(fwd, 5.5);
+      this.velocity.y += (this.gravityMultiplier > 0 ? 1 : -1) * 8.5;
     }
   }
 
@@ -375,13 +375,13 @@ export class PlayerController {
 
       if (this.isPullingRope) {
         // Reeling toward anchor
-        if (ropeDist < 1.1) {
+        if (ropeDist < 1.8) {
           // Reached anchor! Release rope with a boost up
           this.releaseRope(scene, true);
         } else {
           // Pull player rapidly towards anchor point
           const pullDir = toAnchor.clone().normalize();
-          const pullSpeed = 22.0;
+          const pullSpeed = 24.0;
           this.velocity.copy(pullDir.multiplyScalar(pullSpeed));
           this.isGrounded = false;
         }
@@ -390,7 +390,7 @@ export class PlayerController {
       // Update dynamic rope wire line
       if (this.ropeLineMesh) {
         const positions = new Float32Array([
-          this.camera.position.x, this.camera.position.y - 0.08, this.camera.position.z,
+          this.camera.position.x, this.camera.position.y - 0.25, this.camera.position.z,
           this.ropeAnchor.x, this.ropeAnchor.y, this.ropeAnchor.z
         ]);
         this.ropeLineMesh.geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
@@ -503,7 +503,7 @@ export class PlayerController {
             this.position.z <= box.maxZ + this.radius
           ) {
             // Check if player feet were at or above the box top, and now passing through or on it
-            if (currentFeet >= box.maxY - 0.35 && targetFeet <= box.maxY + 0.08) {
+            if (currentFeet >= box.maxY - 0.55 && targetFeet <= box.maxY + 0.15) {
               if (landingFloorY === null || box.maxY > landingFloorY) {
                 landingFloorY = box.maxY;
               }
@@ -523,7 +523,7 @@ export class PlayerController {
             this.position.z >= plat.position[2] - hd - this.radius &&
             this.position.z <= plat.position[2] + hd + this.radius
           ) {
-            if (currentFeet >= topY - 0.35 && targetFeet <= topY + 0.08) {
+            if (currentFeet >= topY - 0.55 && targetFeet <= topY + 0.15) {
               if (landingFloorY === null || topY > landingFloorY) {
                 landingFloorY = topY;
               }
@@ -537,14 +537,14 @@ export class PlayerController {
           this.isGrounded = true;
           this.coyoteTimer = 0.15;
           this.canDoubleJump = true;
-          if (!wasGrounded) this.landSquash = 0.05;
+          if (!wasGrounded) this.landSquash = 0.08;
         } else {
           this.position.y = targetY;
         }
       } else {
         // Jumping up: check ceiling collision above head
-        const currentHead = currentY + this.height * 0.3;
-        const targetHead = targetY + this.height * 0.3;
+        const currentHead = currentY + this.height * 0.25;
+        const targetHead = targetY + this.height * 0.25;
         let ceilingHitY: number | null = null;
 
         for (const box of mazeData.colliders) {
@@ -554,7 +554,7 @@ export class PlayerController {
             this.position.z >= box.minZ - this.radius &&
             this.position.z <= box.maxZ + this.radius
           ) {
-            if (currentHead <= box.minY + 0.35 && targetHead >= box.minY - 0.08) {
+            if (currentHead <= box.minY + 0.55 && targetHead >= box.minY - 0.15) {
               if (ceilingHitY === null || box.minY < ceilingHitY) {
                 ceilingHitY = box.minY;
               }
@@ -563,7 +563,7 @@ export class PlayerController {
         }
 
         if (ceilingHitY !== null) {
-          this.position.y = ceilingHitY - this.height * 0.3 - 0.02;
+          this.position.y = ceilingHitY - this.height * 0.25 - 0.04;
           this.velocity.y = 0;
         } else {
           this.position.y = targetY;
@@ -584,7 +584,7 @@ export class PlayerController {
             this.position.z >= box.minZ - this.radius &&
             this.position.z <= box.maxZ + this.radius
           ) {
-            if (currentHead <= box.minY + 0.35 && targetHead >= box.minY - 0.08) {
+            if (currentHead <= box.minY + 0.55 && targetHead >= box.minY - 0.15) {
               if (landingCeilingY === null || box.minY < landingCeilingY) {
                 landingCeilingY = box.minY;
               }
@@ -598,14 +598,14 @@ export class PlayerController {
           this.isGrounded = true;
           this.coyoteTimer = 0.15;
           this.canDoubleJump = true;
-          if (!wasGrounded) this.landSquash = 0.05;
+          if (!wasGrounded) this.landSquash = 0.08;
         } else {
           this.position.y = targetY;
         }
       } else {
         // Jumping downward away from ceiling: check floor collision below
-        const currentFeet = currentY - this.height * 0.3;
-        const targetFeet = targetY - this.height * 0.3;
+        const currentFeet = currentY - this.height * 0.25;
+        const targetFeet = targetY - this.height * 0.25;
         let floorHitY: number | null = null;
 
         for (const box of mazeData.colliders) {
@@ -615,7 +615,7 @@ export class PlayerController {
             this.position.z >= box.minZ - this.radius &&
             this.position.z <= box.maxZ + this.radius
           ) {
-            if (currentFeet >= box.maxY - 0.35 && targetFeet <= box.maxY + 0.08) {
+            if (currentFeet >= box.maxY - 0.55 && targetFeet <= box.maxY + 0.15) {
               if (floorHitY === null || box.maxY > floorHitY) {
                 floorHitY = box.maxY;
               }
@@ -624,7 +624,7 @@ export class PlayerController {
         }
 
         if (floorHitY !== null) {
-          this.position.y = floorHitY + this.height * 0.3 + 0.02;
+          this.position.y = floorHitY + this.height * 0.25 + 0.04;
           this.velocity.y = 0;
         } else {
           this.position.y = targetY;
@@ -646,7 +646,7 @@ export class PlayerController {
       const dz = this.position.z - pad.position[2];
       const distXZ = Math.sqrt(dx * dx + dz * dz);
 
-      if (distXZ <= pad.size[0] / 2 && Math.abs(dy) <= 0.6) {
+      if (distXZ <= pad.size[0] / 2 + this.radius * 0.5 && Math.abs(dy) <= 1.2) {
         this.velocity.y = this.gravityMultiplier * pad.power;
         this.isGrounded = false;
         soundSynth.playJumpPad();
@@ -697,12 +697,12 @@ export class PlayerController {
       const dz = this.position.z - cube.position[2];
       const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
 
-      if (dist <= 1.4) {
+      if (dist <= 2.2) {
         cube.collected = true;
         stats.cubesCollected++;
         stats.score += 500;
         soundSynth.playCubeCollect();
-        this.cameraShakeIntensity = 0.2;
+        this.cameraShakeIntensity = 0.25;
 
         const mesh = mazeData.animatedMeshes.cubeMeshes.get(cube.id);
         if (mesh) {
@@ -795,7 +795,7 @@ export class PlayerController {
     const upX = Math.sin(this.currentRoll);
     this.camera.up.set(upX, upY, 0).normalize();
 
-    const bobOffset = Math.sin(this.headBobTimer * 2) * (isMoving && this.isGrounded ? 0.02 : 0);
+    const bobOffset = Math.sin(this.headBobTimer * 2) * (isMoving && this.isGrounded ? 0.05 : 0);
     const shakeX = (Math.random() * 2 - 1) * this.cameraShakeIntensity * 0.08;
     const shakeY = (Math.random() * 2 - 1) * this.cameraShakeIntensity * 0.08;
 
@@ -873,9 +873,9 @@ export class PlayerController {
   public checkCollisionAt(x: number, y: number, z: number, mazeData: MazeData): boolean {
     const minX = x - this.radius;
     const maxX = x + this.radius;
-    // Step clearance: start 0.08m above feet so floor is not detected as a wall
-    const minY = y - this.height + 0.08;
-    const maxY = y + this.height * 0.2;
+    // Step clearance: start 0.28m above feet so floor is not detected as a wall
+    const minY = y - this.height + 0.28;
+    const maxY = y + this.height * 0.15;
     const minZ = z - this.radius;
     const maxZ = z + this.radius;
 

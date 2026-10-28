@@ -141,7 +141,7 @@ export class WireScene {
     this.networkManager.onRemotePulseFired = (pos, dir) => {
       const startPos = new THREE.Vector3(...pos);
       const velocity = new THREE.Vector3(...dir).multiplyScalar(42);
-      const geom = new THREE.OctahedronGeometry(0.08, 0);
+      const geom = new THREE.OctahedronGeometry(0.2, 0);
       const line = new THREE.LineSegments(
         new THREE.EdgesGeometry(geom),
         new THREE.LineBasicMaterial({ color: 0xff007f, linewidth: 2 })

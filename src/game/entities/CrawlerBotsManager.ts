@@ -251,11 +251,11 @@ export class CrawlerBotsManager {
         bot.crawler.setPositionAndRotation(bot.position, bot.yaw, upDir);
         bot.crawler.update(dt, chaseSpeed, true);
 
-        // Player collision damage
-        if (distToPlayer <= 1.8) {
+        // Player collision damage (adapted for 4x player radius)
+        if (distToPlayer <= 2.2) {
           onPlayerDamaged(bot.damage);
           soundSynth.playHazardHit();
-          bot.position.addScaledVector(moveDir, -1.2);
+          bot.position.addScaledVector(moveDir, -1.5);
           bot.stunnedTimer = 0.8;
         }
       } else {
@@ -289,7 +289,7 @@ export class CrawlerBotsManager {
       if (!bot.alive) continue;
 
       const dist = projectilePos.distanceTo(bot.position);
-      if (dist <= 1.8) {
+      if (dist <= 2.2) {
         bot.health -= 20;
         if (bot.health <= 0) {
           bot.alive = false;
